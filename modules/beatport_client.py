@@ -247,6 +247,21 @@ class BeatportClient:
             return self.parse_track(raw_list[0])
         return None
 
+    def search_artist_tracks(self, artist_name: str, per_page: int = 3) -> list[dict]:
+        """Search Beatport for tracks by a named artist. Returns up to per_page results."""
+        try:
+            data = self._get(
+                "/catalog/search/",
+                q=artist_name,
+                type="tracks",
+                per_page=per_page,
+            )
+            raw_list = data.get("tracks") or data.get("results") or []
+            return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
+        except Exception as e:
+            print(f"  [beatport] Artist search error for '{artist_name}': {e}")
+            raise
+
     # ------------------------------------------------------------------
     # Charts
     # ------------------------------------------------------------------

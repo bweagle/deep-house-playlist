@@ -45,13 +45,20 @@ def run_recommenders(
     active_sources = sum([beatport_enabled, lastfm_enabled, llm_enabled])
     llm_count = per_source * max(1, (3 // active_sources)) if active_sources else per_source
 
-    # --- Beatport ---
+    # Instantiate Beatport client once — shared by all three sources
+    bp = None
     if beatport_enabled:
-        from modules.beatport_client import BeatportClient
+        try:
+            from modules.beatport_client import BeatportClient
+            bp = BeatportClient(token_file=beatport_token)
+        except Exception as e:
+            print(f"[recommender] Could not load Beatport client: {e}")
+
+    # --- Beatport ---
+    if bp is not None:
         from modules.recommender_beatport import get_beatport_recommendations
         print("[recommender] Running Beatport source…")
         try:
-            bp = BeatportClient(token_file=beatport_token)
             _add(get_beatport_recommendations(bp, db_path, run_id, count=per_source))
         except Exception as e:
             print(f"  [beatport] Source failed: {e}")
@@ -64,7 +71,7 @@ def run_recommenders(
         try:
             _add(
                 get_lastfm_recommendations(
-                    config["lastfm"]["api_key"], db_path, run_id, count=per_source
+                    config["lastfm"]["api_key"], db_path, run_id, count=per_source, bp=bp
                 )
             )
         except Exception as e:
@@ -78,7 +85,7 @@ def run_recommenders(
         try:
             _add(
                 get_llm_recommendations(
-                    config, db_path, run_id, taste_profile, count=llm_count
+                    config, db_path, run_id, taste_profile, count=llm_count, bp=bp
                 )
             )
         except Exception as e:
