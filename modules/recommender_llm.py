@@ -122,11 +122,11 @@ def get_llm_recommendations(
     )
 
     try:
-        # Stream with adaptive thinking; cache the large system prompt
+        # Stream response; cache the large system prompt.
+        # No thinking needed — this is structured JSON generation, not reasoning.
         with client.messages.stream(
             model="claude-opus-4-6",
-            max_tokens=4096,
-            thinking={"type": "adaptive"},
+            max_tokens=8192,
             system=[
                 {
                     "type": "text",
