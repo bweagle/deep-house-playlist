@@ -78,7 +78,10 @@ class YTMusicClient:
     # ------------------------------------------------------------------
 
     def search_track(self, query: str, delay: float = 0.5) -> Optional[str]:
-        """Search YouTube for a song and return the best videoId."""
+        """
+        Search YouTube for a song and return the best videoId.
+        Raises HttpError so callers can detect quota exhaustion (403/429).
+        """
         try:
             response = self.youtube.search().list(
                 part="id",
@@ -90,8 +93,6 @@ class YTMusicClient:
             items = response.get("items", [])
             if items:
                 return items[0]["id"]["videoId"]
-        except HttpError as e:
-            print(f"  Search error for '{query}': {e}")
         finally:
             time.sleep(delay)
         return None

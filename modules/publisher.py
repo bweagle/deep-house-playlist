@@ -10,8 +10,6 @@ import os
 import time
 from datetime import datetime, timezone
 
-import spotipy
-
 from modules.db import get_connection
 from ytmusic_client import YTMusicClient
 
@@ -57,11 +55,23 @@ def _resolve_spotify_ids(
 def _youtube_search(yt: YTMusicClient, candidates: list[dict]) -> list[dict]:
     """
     Search YouTube for each candidate and attach `youtube_video_id`.
+    Stops immediately on quota exhaustion (403/429) or auth errors (401).
     Candidates without a hit are retained (video_id stays None).
     """
+    from googleapiclient.errors import HttpError
+
     for c in candidates:
         query = f"{c['title']} {c['artist']}"
-        video_id = yt.search_track(query, delay=0.5)
+        try:
+            video_id = yt.search_track(query, delay=0.5)
+        except HttpError as e:
+            status_code = int(e.status_code) if hasattr(e, "status_code") else 0
+            if status_code in (401, 403, 429):
+                reason = "quota exhausted" if status_code in (403, 429) else "auth error"
+                print(f"  [yt] {reason} (HTTP {status_code}) — stopping YouTube search.")
+                break
+            print(f"  [yt] Search error for '{query}': {e}")
+            video_id = None
         c["youtube_video_id"] = video_id
         status = "found" if video_id else "not found"
         print(f"  [yt] {status}: {c['title']} — {c['artist']}")
@@ -118,16 +128,15 @@ def publish_mix(
     db_path: str,
     run_id: str,
     ranked_tracks: list[dict],
-    sp: spotipy.Spotify | None = None,
+    sp=None,
     dry_run: bool = False,
 ) -> dict:
     """
     Full publish flow:
-      1. Optionally resolve Spotify IDs for candidates that lack them
-      2. Search YouTube for each track
-      3. Create the weekly playlist
-      4. Add found tracks to the playlist
-      5. Persist mix record to DB
+      1. Search YouTube for each track
+      2. Create the weekly playlist
+      3. Add found tracks to the playlist
+      4. Persist mix record to DB
 
     Returns a summary dict with playlist_id and track counts.
     """
@@ -137,11 +146,6 @@ def publish_mix(
     if os.environ.get("CI") and not os.environ.get("YOUTUBE_PUBLISH"):
         print("[publisher] CI environment detected — skipping YouTube publish.")
         return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
-
-    # 1. Spotify ID resolution (best-effort)
-    if sp:
-        print("[publisher] Resolving Spotify IDs for new candidates…")
-        _resolve_spotify_ids(sp, ranked_tracks, db_path)
 
     # 2. Connect to YouTube
     yt = YTMusicClient(auth_file=auth_file)
