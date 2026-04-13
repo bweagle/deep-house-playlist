@@ -1,0 +1,14 @@
+# YouTube Data API
+google-api-python-client>=2.0.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.2.0
+
+# Music APIs
+spotipy>=2.24.0
+requests>=2.31.0
+
+# LLM
+anthropic>=0.40.0
+
+# Data / ML
+PyYAML>=6.0.1

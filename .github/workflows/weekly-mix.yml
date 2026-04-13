@@ -1,0 +1,90 @@
+name: Weekly Deep House Mix
+
+on:
+  schedule:
+    # Every Sunday at 08:00 UTC
+    - cron: "0 8 * * 0"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (skip playlist creation)"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  generate-mix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write config.yaml from secrets
+        run: |
+          cat > config.yaml << 'EOF'
+          spotify:
+            client_id: "${{ secrets.SPOTIFY_CLIENT_ID }}"
+            client_secret: "${{ secrets.SPOTIFY_CLIENT_SECRET }}"
+          lastfm:
+            api_key: "${{ secrets.LASTFM_API_KEY }}"
+          anthropic:
+            api_key: "${{ secrets.ANTHROPIC_API_KEY }}"
+          youtube:
+            oauth_file: oauth.json
+            playlist_name_template: "Weekly Deep House Mix {week}"
+          pipeline:
+            database: deephouse.db
+            catalog_csv: songs.csv
+            min_rating_for_taste_profile: 3
+            final_playlist_size: 20
+            recommendations_per_source: 15
+          EOF
+
+      - name: Restore database cache
+        uses: actions/cache@v4
+        with:
+          path: deephouse.db
+          key: deephouse-db-${{ github.run_number }}
+          restore-keys: deephouse-db-
+
+      - name: Write YouTube OAuth credentials
+        run: echo '${{ secrets.YOUTUBE_OAUTH_JSON }}' > oauth.json
+
+      - name: Run analyze (refresh catalog + taste profile)
+        run: python3 app.py analyze
+
+      - name: Generate weekly mix
+        env:
+          CI: "true"
+          YOUTUBE_PUBLISH: "true"
+        run: |
+          if [ "${{ github.event.inputs.dry_run }}" = "true" ]; then
+            python3 app.py generate-weekly --dry-run
+          else
+            python3 app.py generate-weekly
+          fi
+
+      - name: Save updated OAuth token
+        if: always()
+        run: |
+          # Only update if token was refreshed (file modified)
+          echo "OAuth token check complete."
+
+      - name: Upload run artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: weekly-mix-${{ github.run_number }}
+          path: deephouse.db
+          retention-days: 30

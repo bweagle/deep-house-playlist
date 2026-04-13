@@ -1,0 +1,27 @@
+# Auth credentials — never commit these
+oauth.json
+browser.json
+
+# Pipeline config (contains API keys)
+config.yaml
+
+# Pipeline state
+deephouse.db
+progress.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.egg
+
+# macOS
+.DS_Store
+
+# Editor
+.vscode/
+.idea/
