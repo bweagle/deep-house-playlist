@@ -252,9 +252,13 @@ class BeatportClient:
     # ------------------------------------------------------------------
 
     def get_genre_top_tracks(self, genre_id: int, per_page: int = 100) -> list[dict]:
-        """Top tracks for a genre (replaces the website Top 100 chart)."""
+        """Top tracks for a genre sorted by chart position."""
         try:
-            data = self._get(f"/catalog/genres/{genre_id}/top/", per_page=per_page)
+            data = self._get(
+                f"/catalog/genres/{genre_id}/tracks/",
+                per_page=per_page,
+                ordering="-chart_position",
+            )
             raw_list = data.get("results") or data.get("tracks") or []
             return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
         except Exception as e:
