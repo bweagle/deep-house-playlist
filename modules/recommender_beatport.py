@@ -2,10 +2,21 @@
 Beatport Recommendations source.
 
 Pulls from Deep House, Melodic House & Techno, Organic House, and Afro House
-genre charts, plus recent releases from the top catalog artists.
+genre charts (tracks released in the last 3 months), plus recent releases
+from the top catalog artists.
+
+Genre charts pulled:
+  - Deep House (ID 12)
+  - Melodic House & Techno (ID 90)
+  - Organic House / Downtempo (ID 93)
+  - Afro House (ID 89)
+
+Editorial charts:
+  - the-hype-deep-house
+  - best-new-tracks-deep-house
 """
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from modules.beatport_client import (
     BeatportClient,
@@ -103,12 +114,13 @@ def get_beatport_recommendations(
         })
         return True
 
-    # 1. Genre top charts
+    # 1. Genre top charts — limited to last 3 months
+    since = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
     for genre_id in _CHART_GENRES:
         if len(candidates) >= count * 3:
             break
-        print(f"  [beatport] Fetching genre {genre_id} top tracks…")
-        for track in bp.get_genre_top_tracks(genre_id, per_page=100):
+        print(f"  [beatport] Fetching genre {genre_id} top tracks (since {since})…")
+        for track in bp.get_genre_top_tracks(genre_id, per_page=100, since_days=90):
             _add(track, f"Beatport genre {genre_id} top chart")
 
     # 2. Editorial charts

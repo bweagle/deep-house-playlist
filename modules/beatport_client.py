@@ -266,14 +266,22 @@ class BeatportClient:
     # Charts
     # ------------------------------------------------------------------
 
-    def get_genre_top_tracks(self, genre_id: int, per_page: int = 100) -> list[dict]:
-        """Top tracks for a genre sorted by chart position."""
+    def get_genre_top_tracks(
+        self, genre_id: int, per_page: int = 100, since_days: int | None = None
+    ) -> list[dict]:
+        """
+        Top tracks for a genre sorted by chart position.
+        If since_days is set, only returns tracks published within that many days.
+        """
         try:
-            data = self._get(
-                f"/catalog/genres/{genre_id}/tracks/",
-                per_page=per_page,
-                ordering="-chart_position",
-            )
+            params: dict = dict(per_page=per_page, ordering="-chart_position")
+            if since_days is not None:
+                from datetime import datetime, timedelta, timezone
+                since = (
+                    datetime.now(timezone.utc) - timedelta(days=since_days)
+                ).strftime("%Y-%m-%d")
+                params["publish_date__gte"] = since
+            data = self._get(f"/catalog/genres/{genre_id}/tracks/", **params)
             raw_list = data.get("results") or data.get("tracks") or []
             return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
         except Exception as e:
