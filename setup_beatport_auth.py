@@ -37,7 +37,7 @@ REDIRECT_URI = "https://api.beatport.com/v4/docs/oauth2-redirect.html"
 # ---------------------------------------------------------------------------
 
 def _password_auth() -> dict | None:
-    username = input("  Email: ").strip()
+    username = input("  Username: ").strip()
     password = getpass.getpass("  Password: ")
 
     resp = requests.post(
@@ -128,7 +128,7 @@ def main():
 
     if args.method in ("auto", "password"):
         print("Beatport authentication setup")
-        print("Enter your Beatport account credentials:\n")
+        print("Enter your Beatport account credentials (username, not email):\n")
         token_data = _password_auth()
 
         if token_data is None and args.method == "auto":
