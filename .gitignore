@@ -1,6 +1,7 @@
 # Auth credentials — never commit these
 oauth.json
 browser.json
+beatport_token.json
 
 # Pipeline config (contains API keys)
 config.yaml

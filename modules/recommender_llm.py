@@ -43,19 +43,19 @@ Respond ONLY with a JSON array — no preamble, no trailing text. Each element:
 def _build_taste_summary(taste_profile: dict) -> str:
     lines = []
     if taste_profile.get("avg_bpm"):
-        lines.append(f"- Average BPM: {taste_profile['avg_bpm']:.1f}")
-    if taste_profile.get("avg_energy"):
-        lines.append(f"- Energy: {taste_profile['avg_energy']:.2f} (0–1 scale)")
-    if taste_profile.get("avg_danceability"):
-        lines.append(f"- Danceability: {taste_profile['avg_danceability']:.2f}")
-    if taste_profile.get("avg_valence"):
-        lines.append(f"- Valence (mood): {taste_profile['avg_valence']:.2f}")
-    if taste_profile.get("avg_acousticness") is not None:
-        lines.append(f"- Acousticness: {taste_profile['avg_acousticness']:.2f}")
-    if taste_profile.get("avg_instrumentalness") is not None:
-        lines.append(f"- Instrumentalness: {taste_profile['avg_instrumentalness']:.2f}")
+        bpm = taste_profile["avg_bpm"]
+        std = taste_profile.get("bpm_std") or 0
+        lines.append(f"- Average BPM: {bpm:.1f} (±{std:.1f})")
     if taste_profile.get("top_keys"):
         lines.append(f"- Favourite Camelot keys: {', '.join(taste_profile['top_keys'])}")
+    if taste_profile.get("genre_weights"):
+        gw = taste_profile["genre_weights"]
+        top = ", ".join(f"{g} ({w:.0%})" for g, w in list(gw.items())[:4])
+        lines.append(f"- Genre breakdown: {top}")
+    if taste_profile.get("top_labels"):
+        lines.append(f"- Favourite labels: {', '.join(taste_profile['top_labels'][:6])}")
+    if taste_profile.get("top_artists"):
+        lines.append(f"- Known artists: {', '.join(taste_profile['top_artists'][:10])}")
     return "\n".join(lines) if lines else "No profile data available."
 
 

@@ -1,0 +1,23 @@
+# Copy this file to config.yaml and fill in your values.
+# config.yaml is gitignored — never commit it.
+
+beatport:
+  # Run `python3 setup_beatport_auth.py` to generate this file
+  token_file: "beatport_token.json"
+
+lastfm:
+  api_key: "YOUR_LASTFM_API_KEY"
+
+anthropic:
+  api_key: "YOUR_ANTHROPIC_API_KEY"
+
+youtube:
+  oauth_file: "oauth.json"
+  playlist_name_template: "Weekly Deep House Mix {week}"
+
+pipeline:
+  catalog_csv: "songs.csv"
+  database: "deephouse.db"
+  recommendations_per_source: 15
+  final_playlist_size: 20
+  min_rating_for_taste_profile: 3

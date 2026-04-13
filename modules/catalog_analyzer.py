@@ -1,77 +1,25 @@
 """
 Catalog Analyzer — Phase 1 of the pipeline.
 
-Loads songs.csv into the database, matches tracks to Spotify for
-enrichment, and computes a taste profile from your highest-rated songs.
+Loads songs.csv into the database, matches tracks to Beatport for
+enrichment (BPM, key, genre, label), and computes a taste profile
+from the highest-rated songs.
 
-CLI: python app.py analyze
+CLI: python3 app.py analyze
 """
 
 import json
+import math
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
-import spotipy
-from spotipy.oauth2 import SpotifyClientCredentials
-
 # songs.py lives one directory up
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from songs import Song, load_songs, filter_songs
+from songs import Song, load_songs
 from modules.db import get_connection, init_db
-
-
-# ---------------------------------------------------------------------------
-# Spotify helpers
-# ---------------------------------------------------------------------------
-
-def build_spotify_client(config: dict) -> spotipy.Spotify:
-    return spotipy.Spotify(
-        auth_manager=SpotifyClientCredentials(
-            client_id=config["spotify"]["client_id"],
-            client_secret=config["spotify"]["client_secret"],
-        ),
-        requests_timeout=10,
-    )
-
-
-def match_song_to_spotify(sp: spotipy.Spotify, song: Song) -> str | None:
-    """Search Spotify for a track and return its ID, or None.
-    Re-raises SpotifyException on 403 so the caller can abort early."""
-    query = f"track:{song.title}"
-    if song.artist:
-        query += f" artist:{song.artist}"
-    try:
-        results = sp.search(q=query, type="track", limit=1, market="US")
-        items = results.get("tracks", {}).get("items", [])
-        if items:
-            return items[0]["id"]
-    except spotipy.exceptions.SpotifyException as e:
-        if e.http_status == 403:
-            raise
-    return None
-
-
-def fetch_audio_features_safe(
-    sp: spotipy.Spotify, spotify_ids: list[str]
-) -> dict[str, dict]:
-    """
-    Fetch audio features in batches of 50.
-    Returns empty dict silently if the endpoint is unavailable (deprecated).
-    """
-    features: dict[str, dict] = {}
-    for i in range(0, len(spotify_ids), 50):
-        batch = spotify_ids[i : i + 50]
-        try:
-            result = sp.audio_features(batch) or []
-            for f in result:
-                if f:
-                    features[f["id"]] = f
-        except spotipy.exceptions.SpotifyException as e:
-            if e.http_status in (403, 404):
-                break  # endpoint deprecated — fall back to CSV data
-            raise
-    return features
+from modules.beatport_client import BeatportClient
 
 
 # ---------------------------------------------------------------------------
@@ -100,48 +48,68 @@ def load_catalog_to_db(songs: list[Song], db_path: str) -> int:
                 song.local,
             ),
         )
-        count += conn.execute(
-            "SELECT changes()"
-        ).fetchone()[0]
+        count += conn.execute("SELECT changes()").fetchone()[0]
     conn.commit()
     conn.close()
     return count
 
 
-def match_catalog_to_spotify(sp: spotipy.Spotify, db_path: str) -> tuple[int, int]:
-    """Match unmatched catalog rows to Spotify. Returns (matched, skipped)."""
+def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, int]:
+    """
+    Match unmatched catalog rows to Beatport.
+    Updates bpm, key_camelot, genre, label, beatport_id, beatport_artist_ids.
+    Returns (matched, skipped).
+    """
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT id, title, artist FROM catalog WHERE spotify_id IS NULL"
+        "SELECT id, title, artist FROM catalog WHERE beatport_id IS NULL"
     ).fetchall()
 
     matched = skipped = 0
     now = datetime.now(timezone.utc).isoformat()
 
     for row in rows:
-        # Build a minimal Song for the helper
-        song = Song(
-            rating="",
-            title=row["title"],
-            artist=row["artist"] or "",
-            bpm=None,
-            key=None,
-            duration=None,
-            notes=None,
-            local=None,
-        )
         try:
-            spotify_id = match_song_to_spotify(sp, song)
-        except spotipy.exceptions.SpotifyException as e:
-            print(f"  Spotify unavailable (HTTP {e.http_status}): {e.msg}")
-            print("  Skipping Spotify matching — check your app's subscription status.")
-            conn.commit()
-            conn.close()
-            return matched, skipped + len(rows)
-        if spotify_id:
+            track = bp.search_track(row["title"], row["artist"])
+        except Exception as e:
+            print(f"  [beatport] Search error for '{row['title']}': {e}")
+            # If it's a 401/403, abort early
+            if hasattr(e, "response") and getattr(e.response, "status_code", 0) in (401, 403):
+                print("  Beatport auth failed — re-run setup_beatport_auth.py.")
+                conn.commit()
+                conn.close()
+                return matched, skipped + len(rows)
+            skipped += 1
+            continue
+
+        if track:
+            artist_ids_json = json.dumps(track.get("artist_ids") or [])
             conn.execute(
-                "UPDATE catalog SET spotify_id = ?, fetched_at = ? WHERE id = ?",
-                (spotify_id, now, row["id"]),
+                """
+                UPDATE catalog SET
+                    beatport_id = ?,
+                    beatport_artist_ids = ?,
+                    bpm = COALESCE(bpm, ?),
+                    key_camelot = COALESCE(key_camelot, ?),
+                    genre = ?,
+                    sub_genre = ?,
+                    label = ?,
+                    release_date = ?,
+                    fetched_at = ?
+                WHERE id = ?
+                """,
+                (
+                    track["beatport_id"],
+                    artist_ids_json,
+                    track.get("bpm"),
+                    track.get("camelot_key"),
+                    track.get("genre"),
+                    track.get("sub_genre"),
+                    track.get("label"),
+                    track.get("release_date"),
+                    now,
+                    row["id"],
+                ),
             )
             matched += 1
         else:
@@ -152,84 +120,54 @@ def match_catalog_to_spotify(sp: spotipy.Spotify, db_path: str) -> tuple[int, in
     return matched, skipped
 
 
-def store_audio_features(features: dict[str, dict], db_path: str) -> int:
-    """Upsert audio features into the database. Returns count stored."""
-    conn = get_connection(db_path)
-    now = datetime.now(timezone.utc).isoformat()
-    count = 0
-    for spotify_id, f in features.items():
-        conn.execute(
-            """
-            INSERT OR REPLACE INTO audio_features
-                (spotify_id, danceability, energy, valence, tempo, loudness,
-                 acousticness, instrumentalness, speechiness,
-                 spotify_key, mode, time_signature, fetched_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                spotify_id,
-                f.get("danceability"),
-                f.get("energy"),
-                f.get("valence"),
-                f.get("tempo"),
-                f.get("loudness"),
-                f.get("acousticness"),
-                f.get("instrumentalness"),
-                f.get("speechiness"),
-                f.get("key"),
-                f.get("mode"),
-                f.get("time_signature"),
-                now,
-            ),
-        )
-        count += 1
-    conn.commit()
-    conn.close()
-    return count
-
-
 # ---------------------------------------------------------------------------
 # Taste profile
 # ---------------------------------------------------------------------------
+
+def _weighted_avg(values_weights: list[tuple]) -> float | None:
+    pairs = [(v, w) for v, w in values_weights if v is not None]
+    if not pairs:
+        return None
+    total = sum(w for _, w in pairs)
+    return sum(v * w for v, w in pairs) / total
+
+
+def _weighted_std(values_weights: list[tuple], mean: float) -> float | None:
+    pairs = [(v, w) for v, w in values_weights if v is not None]
+    if len(pairs) < 2:
+        return None
+    total = sum(w for _, w in pairs)
+    variance = sum(w * (v - mean) ** 2 for v, w in pairs) / total
+    return math.sqrt(variance)
+
 
 def compute_taste_profile(db_path: str, min_rating: int = 3) -> dict:
     """
     Compute a taste profile from songs with numeric rating >= min_rating.
 
-    Uses Spotify audio features when available, falls back to CSV bpm/key.
+    Uses Beatport metadata (BPM, key, genre, label) when available,
+    falls back to CSV bpm/key for unmatched tracks.
     Returns the profile dict and writes it to the taste_profile table.
     """
     conn = get_connection(db_path)
-
-    # Pull rated songs with any available data
     rows = conn.execute(
         """
-        SELECT c.bpm, c.key_camelot, c.rating,
-               af.energy, af.danceability, af.valence,
-               af.acousticness, af.instrumentalness
-        FROM catalog c
-        LEFT JOIN audio_features af ON c.spotify_id = af.spotify_id
-        WHERE CAST(c.rating AS INTEGER) >= ?
+        SELECT bpm, key_camelot, rating, genre, label, artist
+        FROM catalog
+        WHERE CAST(COALESCE(NULLIF(rating, ''), '0') AS INTEGER) >= ?
         """,
         (min_rating,),
     ).fetchall()
+    conn.close()
 
     if not rows:
-        conn.close()
         raise ValueError(f"No songs found with rating >= {min_rating}")
 
-    # Aggregate — weight higher-rated songs more heavily
-    def weighted_avg(values_weights: list[tuple]) -> float | None:
-        pairs = [(v, w) for v, w in values_weights if v is not None]
-        if not pairs:
-            return None
-        total_weight = sum(w for _, w in pairs)
-        return sum(v * w for v, w in pairs) / total_weight
-
-    key_counts: dict[str, int] = {}
-    bpms, energies, danceabilities, valences, acousticnesses, instrumentalnesses = (
-        [], [], [], [], [], []
-    )
+    bpms: list[tuple] = []
+    key_counts: Counter = Counter()
+    genre_counts: Counter = Counter()
+    label_counts: Counter = Counter()
+    artist_counts: Counter = Counter()
 
     for row in rows:
         try:
@@ -237,53 +175,60 @@ def compute_taste_profile(db_path: str, min_rating: int = 3) -> dict:
         except (TypeError, ValueError):
             weight = 1
 
-        bpm = row["bpm"]
-        if bpm:
-            bpms.append((bpm, weight))
+        if row["bpm"]:
+            bpms.append((float(row["bpm"]), weight))
 
-        key = row["key_camelot"]
-        if key:
-            key_counts[key] = key_counts.get(key, 0) + weight
+        if row["key_camelot"]:
+            key_counts[row["key_camelot"]] += weight
 
-        for lst, col in [
-            (energies, "energy"),
-            (danceabilities, "danceability"),
-            (valences, "valence"),
-            (acousticnesses, "acousticness"),
-            (instrumentalnesses, "instrumentalness"),
-        ]:
-            val = row[col]
-            if val is not None:
-                lst.append((val, weight))
+        if row["genre"]:
+            genre_counts[row["genre"]] += weight
 
-    top_keys = sorted(key_counts, key=key_counts.get, reverse=True)[:5]
+        if row["label"]:
+            label_counts[row["label"]] += weight
+
+        if row["artist"]:
+            for a in row["artist"].split(","):
+                a = a.strip()
+                if a:
+                    artist_counts[a] += weight
+
+    avg_bpm = _weighted_avg(bpms)
+    bpm_std = _weighted_std(bpms, avg_bpm) if avg_bpm else None
+
+    top_keys = [k for k, _ in key_counts.most_common(5)]
+
+    # Genre weights as proportions
+    total_genre = sum(genre_counts.values()) or 1
+    genre_weights = {g: round(c / total_genre, 3) for g, c in genre_counts.most_common(8)}
+
+    top_labels = [l for l, _ in label_counts.most_common(10)]
+    top_artists = [a for a, _ in artist_counts.most_common(20)]
 
     profile = {
-        "avg_bpm": weighted_avg(bpms),
-        "avg_energy": weighted_avg(energies),
-        "avg_danceability": weighted_avg(danceabilities),
-        "avg_valence": weighted_avg(valences),
-        "avg_acousticness": weighted_avg(acousticnesses),
-        "avg_instrumentalness": weighted_avg(instrumentalnesses),
+        "avg_bpm": avg_bpm,
+        "bpm_std": bpm_std,
         "top_keys": top_keys,
+        "genre_weights": genre_weights,
+        "top_labels": top_labels,
+        "top_artists": top_artists,
         "computed_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    conn = get_connection(db_path)
     conn.execute(
         """
         INSERT OR REPLACE INTO taste_profile
-            (id, avg_bpm, avg_energy, avg_danceability, avg_valence,
-             avg_acousticness, avg_instrumentalness, top_keys, computed_at)
-        VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+            (id, avg_bpm, bpm_std, top_keys, genre_weights, top_labels, top_artists, computed_at)
+        VALUES (1, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             profile["avg_bpm"],
-            profile["avg_energy"],
-            profile["avg_danceability"],
-            profile["avg_valence"],
-            profile["avg_acousticness"],
-            profile["avg_instrumentalness"],
+            profile["bpm_std"],
             json.dumps(profile["top_keys"]),
+            json.dumps(profile["genre_weights"]),
+            json.dumps(profile["top_labels"]),
+            json.dumps(profile["top_artists"]),
             profile["computed_at"],
         ),
     )
@@ -298,10 +243,11 @@ def load_taste_profile(db_path: str) -> dict:
     row = conn.execute("SELECT * FROM taste_profile WHERE id = 1").fetchone()
     conn.close()
     if not row:
-        raise ValueError("No taste profile found. Run `python app.py analyze` first.")
+        raise ValueError("No taste profile found. Run `python3 app.py analyze` first.")
     profile = dict(row)
-    if profile.get("top_keys"):
-        profile["top_keys"] = json.loads(profile["top_keys"])
+    for key in ("top_keys", "genre_weights", "top_labels", "top_artists"):
+        if profile.get(key):
+            profile[key] = json.loads(profile[key])
     return profile
 
 
@@ -313,9 +259,8 @@ def run_analyze(config: dict, verbose: bool = True) -> dict:
     """
     Full analyze pipeline:
       1. Load CSV into DB
-      2. Match to Spotify
-      3. Fetch audio features
-      4. Compute taste profile
+      2. Match to Beatport (if token available)
+      3. Compute taste profile
     """
     db_path = config["pipeline"]["database"]
     csv_path = config["pipeline"]["catalog_csv"]
@@ -329,40 +274,38 @@ def run_analyze(config: dict, verbose: bool = True) -> dict:
     if verbose:
         print(f"Catalog: {len(songs)} songs loaded ({inserted} new rows)")
 
-    # 2. Match to Spotify
-    sp = build_spotify_client(config)
-    matched, skipped = match_catalog_to_spotify(sp, db_path)
-    if verbose:
-        print(f"Spotify match: {matched} matched, {skipped} not found")
+    # 2. Match to Beatport (optional — skip if no token)
+    beatport_token = config.get("beatport", {}).get("token_file", "beatport_token.json")
+    if Path(beatport_token).exists():
+        try:
+            bp = BeatportClient(token_file=beatport_token)
+            matched, skipped = match_catalog_to_beatport(bp, db_path)
+            if verbose:
+                print(f"Beatport match: {matched} matched, {skipped} not found")
+        except FileNotFoundError:
+            if verbose:
+                print("Beatport token not found — skipping enrichment.")
+        except Exception as e:
+            if verbose:
+                print(f"Beatport matching failed: {e} — skipping enrichment.")
+    else:
+        if verbose:
+            print("No Beatport token — using CSV data only for taste profile.")
 
-    # 3. Fetch audio features for matched songs
-    conn = get_connection(db_path)
-    ids = [
-        r["spotify_id"]
-        for r in conn.execute(
-            "SELECT spotify_id FROM catalog WHERE spotify_id IS NOT NULL"
-        ).fetchall()
-    ]
-    conn.close()
-
-    features = fetch_audio_features_safe(sp, ids)
-    stored = store_audio_features(features, db_path)
-    if verbose:
-        if features:
-            print(f"Audio features: {stored} tracks enriched")
-        else:
-            print("Audio features: endpoint unavailable — using CSV bpm/key for taste profile")
-
-    # 4. Taste profile
+    # 3. Taste profile
     profile = compute_taste_profile(db_path, min_rating=min_rating)
     if verbose:
         print(f"\nTaste profile (from songs rated {min_rating}+):")
         if profile["avg_bpm"]:
-            print(f"  BPM:             {profile['avg_bpm']:.1f}")
-        if profile["avg_energy"]:
-            print(f"  Energy:          {profile['avg_energy']:.2f}")
-        if profile["avg_danceability"]:
-            print(f"  Danceability:    {profile['avg_danceability']:.2f}")
-        print(f"  Top Camelot keys: {', '.join(profile['top_keys'])}")
+            std = profile.get("bpm_std") or 0
+            print(f"  BPM:              {profile['avg_bpm']:.1f} ± {std:.1f}")
+        if profile["top_keys"]:
+            print(f"  Top Camelot keys: {', '.join(profile['top_keys'])}")
+        if profile.get("genre_weights"):
+            top_genres = list(profile["genre_weights"].items())[:4]
+            genre_str = ", ".join(f"{g} ({w:.0%})" for g, w in top_genres)
+            print(f"  Top genres:       {genre_str}")
+        if profile.get("top_labels"):
+            print(f"  Top labels:       {', '.join(profile['top_labels'][:5])}")
 
     return profile
