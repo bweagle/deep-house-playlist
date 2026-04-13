@@ -25,9 +25,10 @@ BEATPORT_AUTH_URL = "https://api.beatport.com/v4/auth/o/authorize/"
 BEATPORT_TOKEN_URL = "https://api.beatport.com/v4/auth/o/token/"
 BEATPORT_DOCS_URL = "https://api.beatport.com/v4/docs/"
 
-# Public client_id extracted from Beatport's bundled React app.
-# Used by their own docs/swagger UI frontend.
+# Extracted from Beatport's bundled React app (API_CLIENT_ID constant)
 BEATPORT_CLIENT_ID = "0GIvkCltVIuPkkwSJHp6NDb3s0potTjLBQr388Dd"
+# Registered redirect URI (found in bundled JS: redirectUri: '...')
+BEATPORT_REDIRECT_URI = "https://api.beatport.com/v4/auth/o/post-message/"
 
 # Beatport genre IDs
 GENRE_DEEP_HOUSE = 12

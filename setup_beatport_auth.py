@@ -28,8 +28,8 @@ from modules.beatport_client import (
 
 TOKEN_FILE = "beatport_token.json"
 
-# Redirect URI registered for the Beatport docs client
-REDIRECT_URI = "https://api.beatport.com/v4/docs/oauth2-redirect.html"
+# Redirect URI registered for this client (found in Beatport's bundled JS)
+REDIRECT_URI = "https://api.beatport.com/v4/auth/o/post-message/"
 
 
 # ---------------------------------------------------------------------------
@@ -76,8 +76,9 @@ def _browser_auth() -> dict | None:
     print(f"  {auth_url}\n")
     webbrowser.open(auth_url)
 
-    print("After you log in, your browser will land on a page at:")
-    print(f"  {REDIRECT_URI}?code=...")
+    print("After you log in, your browser will land on a mostly-blank page.")
+    print("The URL in the address bar will look like:")
+    print(f"  {REDIRECT_URI}?code=XXXXXXXX&...")
     print("\nCopy the FULL URL from your browser's address bar and paste it here:")
     url = input("  URL: ").strip()
 
