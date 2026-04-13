@@ -10,11 +10,10 @@ lastfm:
 
 anthropic:
   api_key: "YOUR_ANTHROPIC_API_KEY"
-  model: "claude-sonnet-4-6"
 
 youtube:
-  auth_file: "oauth.json"
-  weekly_playlist_prefix: "Deep House Weekly"
+  oauth_file: "oauth.json"
+  playlist_name_template: "Weekly Deep House Mix {week}"
 
 pipeline:
   catalog_csv: "songs.csv"
