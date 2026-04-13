@@ -73,6 +73,10 @@ def get_spotify_recommendations(
                 **feature_targets,
             )
         except spotipy.exceptions.SpotifyException as e:
+            if e.http_status == 403:
+                print(f"  [spotify] Recommendations unavailable (HTTP 403): {e.msg}")
+                print("  Skipping Spotify recommendations — check your app's subscription status.")
+                break
             print(f"  [spotify] Recommendations error: {e}")
             continue
 

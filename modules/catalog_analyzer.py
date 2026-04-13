@@ -36,7 +36,8 @@ def build_spotify_client(config: dict) -> spotipy.Spotify:
 
 
 def match_song_to_spotify(sp: spotipy.Spotify, song: Song) -> str | None:
-    """Search Spotify for a track and return its ID, or None."""
+    """Search Spotify for a track and return its ID, or None.
+    Re-raises SpotifyException on 403 so the caller can abort early."""
     query = f"track:{song.title}"
     if song.artist:
         query += f" artist:{song.artist}"
@@ -45,8 +46,9 @@ def match_song_to_spotify(sp: spotipy.Spotify, song: Song) -> str | None:
         items = results.get("tracks", {}).get("items", [])
         if items:
             return items[0]["id"]
-    except spotipy.exceptions.SpotifyException:
-        pass
+    except spotipy.exceptions.SpotifyException as e:
+        if e.http_status == 403:
+            raise
     return None
 
 
@@ -128,7 +130,14 @@ def match_catalog_to_spotify(sp: spotipy.Spotify, db_path: str) -> tuple[int, in
             notes=None,
             local=None,
         )
-        spotify_id = match_song_to_spotify(sp, song)
+        try:
+            spotify_id = match_song_to_spotify(sp, song)
+        except spotipy.exceptions.SpotifyException as e:
+            print(f"  Spotify unavailable (HTTP {e.http_status}): {e.msg}")
+            print("  Skipping Spotify matching — check your app's subscription status.")
+            conn.commit()
+            conn.close()
+            return matched, skipped + len(rows)
         if spotify_id:
             conn.execute(
                 "UPDATE catalog SET spotify_id = ?, fetched_at = ? WHERE id = ?",
