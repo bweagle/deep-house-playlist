@@ -199,6 +199,9 @@ class BeatportClient:
     def parse_track(raw: dict) -> dict:
         """
         Normalise a raw Beatport track object to the flat dict used by the pipeline.
+
+        Camelot key: API returns camelot_number (int) + camelot_letter ("A"/"B").
+        We combine them into e.g. "8A", then convert to local m/d notation.
         """
         key_obj = raw.get("key") or {}
         genre_obj = raw.get("genre") or {}
@@ -207,17 +210,22 @@ class BeatportClient:
         label_obj = release_obj.get("label") or {}
         artists = raw.get("artists") or []
 
+        # Build Camelot string from parts, then normalise to m/d
+        camelot_num = key_obj.get("camelot_number")
+        camelot_letter = key_obj.get("camelot_letter")
+        camelot_raw = f"{camelot_num}{camelot_letter}" if camelot_num and camelot_letter else None
+
         return {
             "beatport_id": raw.get("id"),
             "title": raw.get("name", ""),
             "artist": ", ".join(a.get("name", "") for a in artists),
             "artist_ids": [a.get("id") for a in artists if a.get("id")],
             "bpm": raw.get("bpm"),
-            "camelot_key": beatport_camelot_to_local(key_obj.get("camelot")),
+            "camelot_key": beatport_camelot_to_local(camelot_raw),
             "key_name": key_obj.get("name"),
             "genre": genre_obj.get("name", ""),
             "genre_id": genre_obj.get("id"),
-            "sub_genre": sub_genre_obj.get("name", ""),
+            "sub_genre": (sub_genre_obj.get("name") or "") if sub_genre_obj else "",
             "label": label_obj.get("name", ""),
             "release_date": raw.get("publish_date") or raw.get("release_date"),
             "duration": raw.get("length_ms"),
@@ -232,17 +240,11 @@ class BeatportClient:
         Search Beatport for a track. Returns a parsed track dict or None.
         """
         query = f"{artist} {title}".strip() if artist else title
-        try:
-            data = self._get("/catalog/search/", q=query, type="tracks", per_page=5)
-            # v4 search wraps results under the type key
-            raw_list = (
-                data.get("tracks", {}).get("data", [])
-                or data.get("results", [])
-            )
-            if raw_list:
-                return self.parse_track(raw_list[0])
-        except requests.RequestException:
-            pass
+        data = self._get("/catalog/search/", q=query, type="tracks", per_page=5)
+        # v4 returns {"tracks": [...]} where tracks is a plain list
+        raw_list = data.get("tracks") or data.get("results") or []
+        if isinstance(raw_list, list) and raw_list:
+            return self.parse_track(raw_list[0])
         return None
 
     # ------------------------------------------------------------------
@@ -253,19 +255,19 @@ class BeatportClient:
         """Top tracks for a genre (replaces the website Top 100 chart)."""
         try:
             data = self._get(f"/catalog/genres/{genre_id}/top/", per_page=per_page)
-            return [self.parse_track(t) for t in data.get("results", [])]
-        except requests.RequestException as e:
+            raw_list = data.get("results") or data.get("tracks") or []
+            return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
+        except Exception as e:
             print(f"  [beatport] Genre {genre_id} top tracks error: {e}")
             return []
 
     def get_chart_tracks(self, chart_slug: str, per_page: int = 100) -> list[dict]:
         """Tracks from a named editorial chart (e.g. 'the-hype-deep-house')."""
         try:
-            data = self._get(
-                f"/catalog/charts/{chart_slug}/tracks/", per_page=per_page
-            )
-            return [self.parse_track(t) for t in data.get("results", [])]
-        except requests.RequestException as e:
+            data = self._get(f"/catalog/charts/{chart_slug}/tracks/", per_page=per_page)
+            raw_list = data.get("results") or data.get("tracks") or []
+            return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
+        except Exception as e:
             print(f"  [beatport] Chart '{chart_slug}' error: {e}")
             return []
 
@@ -288,7 +290,8 @@ class BeatportClient:
                 ordering="-publish_date",
                 per_page=per_page,
             )
-            return [self.parse_track(t) for t in data.get("results", [])]
-        except requests.RequestException as e:
+            raw_list = data.get("results") or data.get("tracks") or []
+            return [self.parse_track(t) for t in raw_list if isinstance(t, dict)]
+        except Exception as e:
             print(f"  [beatport] Artist {artist_id} releases error: {e}")
             return []

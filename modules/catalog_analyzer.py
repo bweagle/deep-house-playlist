@@ -66,16 +66,25 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
     ).fetchall()
 
     matched = skipped = 0
+    consecutive_errors = 0
     now = datetime.now(timezone.utc).isoformat()
 
     for row in rows:
         try:
             track = bp.search_track(row["title"], row["artist"])
+            consecutive_errors = 0  # reset on success
         except Exception as e:
+            consecutive_errors += 1
             print(f"  [beatport] Search error for '{row['title']}': {e}")
-            # If it's a 401/403, abort early
+            # Hard stop on auth errors
             if hasattr(e, "response") and getattr(e.response, "status_code", 0) in (401, 403):
                 print("  Beatport auth failed — re-run setup_beatport_auth.py.")
+                conn.commit()
+                conn.close()
+                return matched, skipped + len(rows)
+            # Stop after 3 consecutive errors — something is wrong
+            if consecutive_errors >= 3:
+                print(f"  Stopping Beatport matching after {consecutive_errors} consecutive errors.")
                 conn.commit()
                 conn.close()
                 return matched, skipped + len(rows)
