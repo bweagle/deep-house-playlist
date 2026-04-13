@@ -272,18 +272,64 @@ def harmonic_sort(tracks: list[dict]) -> list[dict]:
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
+def _artist_key(track: dict) -> str:
+    return track.get("artist", "").lower()
+
+
+def _apply_artist_cap(scored: list[dict], final_count: int, max_per_artist: int = 2) -> list[dict]:
+    """
+    Greedily select up to final_count tracks, capping any single artist
+    at max_per_artist entries. Candidates are already sorted by score desc.
+    """
+    counts: dict[str, int] = {}
+    selected = []
+    for track in scored:
+        artist = _artist_key(track)
+        if counts.get(artist, 0) < max_per_artist:
+            selected.append(track)
+            counts[artist] = counts.get(artist, 0) + 1
+        if len(selected) >= final_count:
+            break
+    return selected
+
+
+def _spread_artists(tracks: list[dict]) -> list[dict]:
+    """
+    Ensure no two adjacent tracks share the same artist.
+    When a collision is found, swap the second track with the nearest
+    non-colliding track later in the list.  Repeats until stable or
+    no more swaps are possible.
+    """
+    result = list(tracks)
+    for _ in range(len(result)):  # at most len passes
+        swapped = False
+        for i in range(len(result) - 1):
+            if _artist_key(result[i]) == _artist_key(result[i + 1]):
+                # Find nearest track after i+1 with a different artist
+                for j in range(i + 2, len(result)):
+                    if _artist_key(result[j]) != _artist_key(result[i]):
+                        result[i + 1], result[j] = result[j], result[i + 1]
+                        swapped = True
+                        break
+        if not swapped:
+            break
+    return result
+
+
 def rank_and_filter(
     candidates: list[dict],
     taste_profile: dict,
     db_path: str,
     final_count: int = 20,
+    max_per_artist: int = 2,
 ) -> list[dict]:
-    """Score, trim to final_count, then harmonically sort."""
+    """Score, enforce per-artist cap, harmonically sort, then spread artists."""
     if not candidates:
         return []
     scored = score_candidates(candidates, taste_profile, db_path)
-    top = scored[:final_count]
+    top = _apply_artist_cap(scored, final_count, max_per_artist)
     ordered = harmonic_sort(top)
+    ordered = _spread_artists(ordered)
     for i, track in enumerate(ordered, start=1):
         track["rank"] = i
     return ordered
