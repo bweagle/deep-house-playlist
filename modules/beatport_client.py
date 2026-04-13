@@ -59,28 +59,55 @@ def beatport_camelot_to_local(camelot: str | None) -> str | None:
 
 def scrape_client_id() -> Optional[str]:
     """
-    Auto-scrape the public OAuth client_id from Beatport's swagger UI page.
-    This is a public ID used by the docs frontend — no developer account needed.
+    Try to find the public OAuth client_id from the Beatport docs page.
+
+    The docs page is a React app — the client_id is in the minified JS bundles,
+    not the HTML. We download each bundle and search for OAuth patterns.
     Returns None if scraping fails.
     """
     try:
-        resp = requests.get(BEATPORT_DOCS_URL, timeout=15)
-        # The swagger UI embeds the client_id in its initialisation script
-        match = re.search(r'"clientId"\s*:\s*"([^"]{4,})"', resp.text)
-        if match:
-            return match.group(1)
-        # Fallback: look in an embedded openapi spec URL
-        spec_match = re.search(r'url:\s*["\']([^"\']*openapi[^"\']*)["\']', resp.text)
-        if spec_match:
-            spec_url = spec_match.group(1)
-            if not spec_url.startswith("http"):
-                spec_url = f"https://api.beatport.com{spec_url}"
-            spec = requests.get(spec_url, timeout=10).json()
-            for scheme in spec.get("components", {}).get("securitySchemes", {}).values():
-                for flow in scheme.get("flows", {}).values():
-                    cid = flow.get("x-clientId") or flow.get("clientId")
-                    if cid:
-                        return cid
+        html_resp = requests.get(BEATPORT_DOCS_URL, timeout=15)
+        html = html_resp.text
+
+        # 1. Try OpenAPI spec endpoints directly first (fastest)
+        for spec_path in ("/v4/schema/", "/v4/openapi.json", "/v4/swagger.json"):
+            try:
+                spec_resp = requests.get(
+                    f"https://api.beatport.com{spec_path}",
+                    timeout=8,
+                    headers={"Accept": "application/json"},
+                )
+                if spec_resp.ok:
+                    spec = spec_resp.json()
+                    for scheme in spec.get("components", {}).get("securitySchemes", {}).values():
+                        for flow in scheme.get("flows", {}).values():
+                            for key in ("x-clientId", "clientId", "client_id"):
+                                if key in flow:
+                                    return flow[key]
+            except Exception:
+                continue
+
+        # 2. Download JS bundles and search for OAuth client_id patterns
+        js_urls = re.findall(r'src="(/static/[^"]+\.js)"', html)
+        for js_path in js_urls:
+            js_url = f"https://api.beatport.com{js_path}"
+            try:
+                js = requests.get(js_url, timeout=15).text
+                # Look for clientId near OAuth-related strings
+                # Minified JS often looks like: clientId:"XXXXXXXX" or "clientId","XXXXX"
+                for pattern in [
+                    r'clientId["\s]*:["\s]*["\']([A-Za-z0-9_\-]{4,64})["\']',
+                    r'"client_id"[,\s]*"([A-Za-z0-9_\-]{4,64})"',
+                    r'client_id=([A-Za-z0-9_\-]{4,64})[&"\s]',
+                ]:
+                    m = re.search(pattern, js)
+                    if m:
+                        candidate = m.group(1)
+                        # Filter out common false positives
+                        if candidate not in ("undefined", "null", "true", "false"):
+                            return candidate
+            except Exception:
+                continue
     except Exception:
         pass
     return None
