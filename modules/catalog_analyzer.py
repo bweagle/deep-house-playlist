@@ -255,7 +255,7 @@ def load_taste_profile(db_path: str) -> dict:
 # Top-level entry point
 # ---------------------------------------------------------------------------
 
-def run_analyze(config: dict, verbose: bool = True) -> dict:
+def run_analyze(config: dict, verbose: bool = True, limit: int | None = None) -> dict:
     """
     Full analyze pipeline:
       1. Load CSV into DB
@@ -270,9 +270,12 @@ def run_analyze(config: dict, verbose: bool = True) -> dict:
 
     # 1. Load CSV
     songs = load_songs(csv_path)
+    if limit:
+        songs = songs[:limit]
     inserted = load_catalog_to_db(songs, db_path)
     if verbose:
-        print(f"Catalog: {len(songs)} songs loaded ({inserted} new rows)")
+        total_msg = f" (limited to {limit})" if limit else ""
+        print(f"Catalog: {len(songs)} songs loaded ({inserted} new rows){total_msg}")
 
     # 2. Match to Beatport (optional — skip if no token)
     beatport_token = config.get("beatport", {}).get("token_file", "beatport_token.json")

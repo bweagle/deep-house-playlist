@@ -35,7 +35,7 @@ def _load_config(path: str) -> dict:
 def cmd_analyze(args: argparse.Namespace) -> None:
     from modules.catalog_analyzer import run_analyze
     config = _load_config(args.config)
-    run_analyze(config, verbose=True)
+    run_analyze(config, verbose=True, limit=args.limit)
 
 
 def cmd_recommend(args: argparse.Namespace) -> None:
@@ -173,7 +173,9 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     # analyze
-    sub.add_parser("analyze", help="Load catalog CSV, match Spotify, compute taste profile")
+    p_analyze = sub.add_parser("analyze", help="Load catalog CSV, match Beatport, compute taste profile")
+    p_analyze.add_argument("--limit", type=int, default=None,
+                           help="Only process the first N songs (useful for testing)")
 
     # recommend
     p_rec = sub.add_parser("recommend", help="Run all recommendation sources")
