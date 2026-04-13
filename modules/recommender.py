@@ -34,6 +34,9 @@ def run_recommenders(
     Run all configured recommendation sources and return a merged,
     deduplicated candidate list. Each candidate dict contains at minimum:
       run_id, source, title, artist, spotify_id (may be None), reason.
+
+    When only the LLM source is active, its count is scaled up to
+    compensate for the missing sources.
     """
     all_candidates: list[dict] = []
     seen: set[tuple] = set()
@@ -45,9 +48,17 @@ def run_recommenders(
                 seen.add(key)
                 all_candidates.append(c)
 
-    # --- Spotify ---
     spotify_cfg = config.get("spotify", {})
-    if spotify_cfg.get("client_id") and spotify_cfg.get("client_secret"):
+    spotify_enabled = bool(spotify_cfg.get("client_id") and spotify_cfg.get("client_secret"))
+    lastfm_enabled = bool(config.get("lastfm", {}).get("api_key"))
+    llm_enabled = bool(config.get("anthropic", {}).get("api_key"))
+
+    # Scale up LLM count when it's carrying more (or all) of the load
+    active_sources = sum([spotify_enabled, lastfm_enabled, llm_enabled])
+    llm_count = per_source * max(1, (3 // active_sources)) if active_sources else per_source
+
+    # --- Spotify ---
+    if spotify_enabled:
         print("[recommender] Running Spotify source…")
         try:
             sp = build_spotify_client(config)
@@ -59,31 +70,29 @@ def run_recommenders(
         except Exception as e:
             print(f"  [spotify] Source failed: {e}")
     else:
-        print("[recommender] Spotify credentials not configured — skipping.")
+        print("[recommender] Spotify not configured — skipping.")
 
     # --- Last.fm ---
-    lastfm_key = config.get("lastfm", {}).get("api_key")
-    if lastfm_key:
+    if lastfm_enabled:
         print("[recommender] Running Last.fm source…")
         try:
             _add(
                 get_lastfm_recommendations(
-                    lastfm_key, db_path, run_id, count=per_source
+                    config["lastfm"]["api_key"], db_path, run_id, count=per_source
                 )
             )
         except Exception as e:
             print(f"  [lastfm] Source failed: {e}")
     else:
-        print("[recommender] Last.fm API key not configured — skipping.")
+        print("[recommender] Last.fm not configured — skipping.")
 
     # --- Claude LLM ---
-    anthropic_key = config.get("anthropic", {}).get("api_key")
-    if anthropic_key:
-        print("[recommender] Running Claude LLM source…")
+    if llm_enabled:
+        print(f"[recommender] Running Claude LLM source (count={llm_count})…")
         try:
             _add(
                 get_llm_recommendations(
-                    config, db_path, run_id, taste_profile, count=per_source
+                    config, db_path, run_id, taste_profile, count=llm_count
                 )
             )
         except Exception as e:
