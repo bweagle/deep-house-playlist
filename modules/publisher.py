@@ -103,19 +103,21 @@ def _save_mix(
         conn.execute(
             """
             INSERT INTO mix_tracks
-                (run_id, position, title, artist, spotify_id,
-                 youtube_video_id, camelot_key, bpm)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (run_id, position, title, artist, beatport_id,
+                 youtube_video_id, camelot_key, bpm, genre, label)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 run_id,
                 t.get("rank", 0),
                 t["title"],
                 t["artist"],
-                t.get("spotify_id"),
+                t.get("beatport_id"),
                 t.get("youtube_video_id"),
                 t.get("camelot_key") or t.get("key_camelot"),
                 t.get("bpm"),
+                t.get("genre"),
+                t.get("label"),
             ),
         )
 
