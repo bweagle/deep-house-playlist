@@ -60,6 +60,8 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
     Updates bpm, key_camelot, genre, label, beatport_id, beatport_artist_ids.
     Returns (matched, skipped).
     """
+    import sqlite3
+
     conn = get_connection(db_path)
     rows = conn.execute(
         "SELECT id, title, artist FROM catalog WHERE beatport_id IS NULL"
@@ -69,63 +71,65 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
     consecutive_errors = 0
     now = datetime.now(timezone.utc).isoformat()
 
-    for row in rows:
-        try:
-            track = bp.search_track(row["title"], row["artist"])
-            consecutive_errors = 0  # reset on success
-        except Exception as e:
-            consecutive_errors += 1
-            print(f"  [beatport] Search error for '{row['title']}': {e}")
-            # Hard stop on auth errors
-            if hasattr(e, "response") and getattr(e.response, "status_code", 0) in (401, 403):
-                print("  Beatport auth failed — re-run setup_beatport_auth.py.")
-                conn.commit()
-                conn.close()
-                return matched, skipped + len(rows)
-            # Stop after 3 consecutive errors — something is wrong
-            if consecutive_errors >= 3:
-                print(f"  Stopping Beatport matching after {consecutive_errors} consecutive errors.")
-                conn.commit()
-                conn.close()
-                return matched, skipped + len(rows)
-            skipped += 1
-            continue
+    try:
+        for row in rows:
+            try:
+                track = bp.search_track(row["title"], row["artist"])
+                consecutive_errors = 0  # reset on success
+            except Exception as e:
+                consecutive_errors += 1
+                print(f"  [beatport] Search error for '{row['title']}': {e}")
+                # Hard stop on auth errors
+                if hasattr(e, "response") and getattr(e.response, "status_code", 0) in (401, 403):
+                    print("  Beatport auth failed — re-run setup_beatport_auth.py.")
+                    return matched, skipped + len(rows)
+                # Stop after 3 consecutive errors — something is wrong
+                if consecutive_errors >= 3:
+                    print(f"  Stopping Beatport matching after {consecutive_errors} consecutive errors.")
+                    return matched, skipped + len(rows)
+                skipped += 1
+                continue
 
-        if track:
-            artist_ids_json = json.dumps(track.get("artist_ids") or [])
-            conn.execute(
-                """
-                UPDATE catalog SET
-                    beatport_id = ?,
-                    beatport_artist_ids = ?,
-                    bpm = COALESCE(bpm, ?),
-                    key_camelot = COALESCE(key_camelot, ?),
-                    genre = ?,
-                    sub_genre = ?,
-                    label = ?,
-                    release_date = ?,
-                    fetched_at = ?
-                WHERE id = ?
-                """,
-                (
-                    track["beatport_id"],
-                    artist_ids_json,
-                    track.get("bpm"),
-                    track.get("camelot_key"),
-                    track.get("genre"),
-                    track.get("sub_genre"),
-                    track.get("label"),
-                    track.get("release_date"),
-                    now,
-                    row["id"],
-                ),
-            )
-            matched += 1
-        else:
-            skipped += 1
+            if track:
+                artist_ids_json = json.dumps(track.get("artist_ids") or [])
+                try:
+                    conn.execute(
+                        """
+                        UPDATE catalog SET
+                            beatport_id = ?,
+                            beatport_artist_ids = ?,
+                            bpm = COALESCE(bpm, ?),
+                            key_camelot = COALESCE(key_camelot, ?),
+                            genre = ?,
+                            sub_genre = ?,
+                            label = ?,
+                            release_date = ?,
+                            fetched_at = ?
+                        WHERE id = ?
+                        """,
+                        (
+                            track["beatport_id"],
+                            artist_ids_json,
+                            track.get("bpm"),
+                            track.get("camelot_key"),
+                            track.get("genre"),
+                            track.get("sub_genre"),
+                            track.get("label"),
+                            track.get("release_date"),
+                            now,
+                            row["id"],
+                        ),
+                    )
+                    matched += 1
+                except sqlite3.IntegrityError:
+                    # Two catalog tracks matched the same Beatport ID — skip this one
+                    skipped += 1
+            else:
+                skipped += 1
+    finally:
+        conn.commit()
+        conn.close()
 
-    conn.commit()
-    conn.close()
     return matched, skipped
 
 
