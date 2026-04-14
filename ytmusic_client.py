@@ -60,8 +60,27 @@ class YTMusicClient:
     # Playlists
     # ------------------------------------------------------------------
 
+    def find_playlist(self, name: str) -> Optional[str]:
+        """Return the playlist ID of the first playlist matching name, or None."""
+        page_token = None
+        while True:
+            kwargs = dict(part="snippet", mine=True, maxResults=50)
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = self.youtube.playlists().list(**kwargs).execute()
+            for item in response.get("items", []):
+                if item["snippet"]["title"] == name:
+                    return item["id"]
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                return None
+
     def find_or_create_playlist(self, name: str, description: str = "") -> str:
-        """Create a new playlist and return its ID."""
+        """Return existing playlist ID by name, or create a new one."""
+        existing = self.find_playlist(name)
+        if existing:
+            print(f"Found existing playlist: '{name}' ({existing})")
+            return existing
         response = self.youtube.playlists().insert(
             part="snippet,status",
             body={
@@ -72,6 +91,23 @@ class YTMusicClient:
         playlist_id = response["id"]
         print(f"Created new playlist: '{name}' ({playlist_id})")
         return playlist_id
+
+    def clear_playlist(self, playlist_id: str) -> int:
+        """Remove all items from a playlist. Returns number of items removed."""
+        removed = 0
+        page_token = None
+        while True:
+            kwargs = dict(part="id", playlistId=playlist_id, maxResults=50)
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = self.youtube.playlistItems().list(**kwargs).execute()
+            for item in response.get("items", []):
+                self.youtube.playlistItems().delete(id=item["id"]).execute()
+                removed += 1
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return removed
 
     # ------------------------------------------------------------------
     # Search

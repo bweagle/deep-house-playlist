@@ -163,7 +163,7 @@ def publish_mix(
         print("[publisher] Dry-run mode — playlist not created.")
         return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks)}
 
-    # 4. Create playlist
+    # 4. Create dated archive playlist (always a fresh playlist)
     week = datetime.now(timezone.utc).strftime("%Y-W%V")
     playlist_name = config.get("youtube", {}).get(
         "playlist_name_template", "Weekly Deep House Mix {week}"
@@ -177,12 +177,26 @@ def publish_mix(
         ),
     )
 
-    # 5. Add tracks
+    # 5. Add tracks to dated playlist
     video_ids = [t["youtube_video_id"] for t in found]
     added = yt.add_to_playlist(playlist_id, video_ids)
     print(f"[publisher] {added} tracks added to playlist '{playlist_name}'")
 
-    # 6. Persist
+    # 6. Update pinned "current" playlist (find or create, then replace contents)
+    pinned_name = config.get("youtube", {}).get("pinned_playlist_name")
+    if pinned_name:
+        print(f"[publisher] Updating pinned playlist '{pinned_name}'…")
+        pinned_id = yt.find_or_create_playlist(
+            name=pinned_name,
+            description="Current weekly deep house mix — updated every week.",
+        )
+        removed = yt.clear_playlist(pinned_id)
+        if removed:
+            print(f"[publisher] Cleared {removed} old tracks from '{pinned_name}'")
+        yt.add_to_playlist(pinned_id, video_ids)
+        print(f"[publisher] '{pinned_name}' updated with this week's {len(video_ids)} tracks")
+
+    # 7. Persist
     _save_mix(run_id, playlist_id, playlist_name, ranked_tracks, db_path)
 
     return {

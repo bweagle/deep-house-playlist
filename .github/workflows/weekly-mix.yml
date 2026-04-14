@@ -42,6 +42,7 @@ jobs:
           youtube:
             oauth_file: oauth.json
             playlist_name_template: "Weekly Deep House Mix {week}"
+            pinned_playlist_name: "My Weekly Mix"
           pipeline:
             database: deephouse.db
             catalog_csv: songs.csv
