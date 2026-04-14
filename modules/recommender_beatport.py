@@ -9,7 +9,6 @@ Genre charts pulled:
   - Deep House (ID 12)
   - Melodic House & Techno (ID 90)
   - Organic House / Downtempo (ID 93)
-  - Afro House (ID 89)
 
 Editorial charts:
   - the-hype-deep-house
@@ -23,7 +22,6 @@ from modules.beatport_client import (
     GENRE_DEEP_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
-    GENRE_AFRO_HOUSE,
 )
 from modules.db import get_connection
 
@@ -32,7 +30,6 @@ _CHART_GENRES = [
     GENRE_DEEP_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
-    GENRE_AFRO_HOUSE,
 ]
 
 # Named editorial charts to pull (slug → human label)
