@@ -64,6 +64,7 @@ def cmd_rank(args: argparse.Namespace) -> None:
     config = _load_config(args.config)
     db_path = config["pipeline"]["database"]
     final_count = config["pipeline"].get("final_playlist_size", 20)
+    exclude_recent_weeks = config["pipeline"].get("exclude_recent_weeks", 4)
 
     taste_profile = load_taste_profile(db_path)
 
@@ -86,7 +87,8 @@ def cmd_rank(args: argparse.Namespace) -> None:
         sys.exit("No recommendations found. Run `recommend` first.")
 
     candidates = [dict(r) for r in rows]
-    ranked = rank_and_filter(candidates, taste_profile, db_path, final_count)
+    ranked = rank_and_filter(candidates, taste_profile, db_path, final_count,
+                             exclude_recent_weeks=exclude_recent_weeks)
 
     print(f"\nRanked tracklist ({len(ranked)} tracks):")
     for t in ranked:

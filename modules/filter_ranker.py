@@ -151,8 +151,25 @@ def familiarity_score(
 # ---------------------------------------------------------------------------
 
 def _get_published_titles(db_path: str) -> set[tuple]:
+    """All tracks ever published — used for the soft novelty score."""
     conn = get_connection(db_path)
     rows = conn.execute("SELECT LOWER(title) as t, LOWER(artist) as a FROM mix_tracks").fetchall()
+    conn.close()
+    return {(r["t"], r["a"]) for r in rows}
+
+
+def _get_recent_titles(db_path: str, weeks: int) -> set[tuple]:
+    """Tracks published in the last N weeks — hard-excluded from selection."""
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        """
+        SELECT LOWER(mt.title) AS t, LOWER(mt.artist) AS a
+        FROM mix_tracks mt
+        JOIN weekly_mixes wm ON mt.run_id = wm.run_id
+        WHERE wm.published_at >= datetime('now', ?)
+        """,
+        (f"-{weeks * 7} days",),
+    ).fetchall()
     conn.close()
     return {(r["t"], r["a"]) for r in rows}
 
@@ -322,10 +339,31 @@ def rank_and_filter(
     db_path: str,
     final_count: int = 20,
     max_per_artist: int = 2,
+    exclude_recent_weeks: int = 4,
 ) -> list[dict]:
-    """Score, enforce per-artist cap, harmonically sort, then spread artists."""
+    """
+    Score, enforce per-artist cap, harmonically sort, then spread artists.
+
+    Tracks published in the last `exclude_recent_weeks` weeks are hard-excluded
+    before scoring so the mix stays fresh week to week. Older repeated tracks
+    still receive a soft novelty penalty in the score.
+    """
     if not candidates:
         return []
+
+    # Hard-exclude recently played tracks
+    if exclude_recent_weeks > 0:
+        recent = _get_recent_titles(db_path, exclude_recent_weeks)
+        if recent:
+            before = len(candidates)
+            candidates = [
+                c for c in candidates
+                if (c["title"].lower(), c["artist"].lower()) not in recent
+            ]
+            excluded = before - len(candidates)
+            if excluded:
+                print(f"[ranker] Excluded {excluded} tracks played in the last {exclude_recent_weeks} weeks")
+
     scored = score_candidates(candidates, taste_profile, db_path)
     top = _apply_artist_cap(scored, final_count, max_per_artist)
     ordered = harmonic_sort(top)

@@ -22,3 +22,4 @@ pipeline:
   recommendations_per_source: 15
   final_playlist_size: 20
   min_rating_for_taste_profile: 3
+  exclude_recent_weeks: 4   # hard-exclude tracks played in the last N weeks

@@ -14,53 +14,39 @@ from modules.db import get_connection
 from ytmusic_client import YTMusicClient
 
 
-def _resolve_spotify_ids(
-    sp: spotipy.Spotify | None,
-    candidates: list[dict],
-    db_path: str,
-) -> list[dict]:
-    """
-    For candidates without a spotify_id, attempt to search Spotify.
-    Updates the candidates list in-place and stores hits in the DB.
-    """
-    if sp is None:
-        return candidates
-
+def _build_yt_cache(db_path: str) -> dict[tuple, str]:
+    """Return a (title.lower, artist.lower) → youtube_video_id map from past mixes."""
     conn = get_connection(db_path)
-    now = datetime.now(timezone.utc).isoformat()
-
-    for c in candidates:
-        if c.get("spotify_id"):
-            continue
-        query = f"track:{c['title']} artist:{c['artist']}"
-        try:
-            results = sp.search(q=query, type="track", limit=1, market="US")
-            items = results.get("tracks", {}).get("items", [])
-            if items:
-                c["spotify_id"] = items[0]["id"]
-                # Cache in catalog if the track is there
-                conn.execute(
-                    "UPDATE catalog SET spotify_id = ?, fetched_at = ? "
-                    "WHERE LOWER(title) = LOWER(?) AND LOWER(artist) = LOWER(?)",
-                    (c["spotify_id"], now, c["title"], c["artist"]),
-                )
-        except spotipy.exceptions.SpotifyException:
-            pass
-
-    conn.commit()
+    rows = conn.execute(
+        """
+        SELECT LOWER(title) AS t, LOWER(artist) AS a, youtube_video_id
+        FROM mix_tracks
+        WHERE youtube_video_id IS NOT NULL
+        """
+    ).fetchall()
     conn.close()
-    return candidates
+    return {(r["t"], r["a"]): r["youtube_video_id"] for r in rows}
 
 
-def _youtube_search(yt: YTMusicClient, candidates: list[dict]) -> list[dict]:
+def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> list[dict]:
     """
-    Search YouTube for each candidate and attach `youtube_video_id`.
+    Attach youtube_video_id to each candidate.
+    Checks the mix_tracks cache first — only calls the API for uncached tracks.
     Stops immediately on quota exhaustion (403/429) or auth errors (401).
-    Candidates without a hit are retained (video_id stays None).
     """
     from googleapiclient.errors import HttpError
 
+    cache = _build_yt_cache(db_path)
+    cache_hits = 0
+
     for c in candidates:
+        key = (c["title"].lower(), c["artist"].lower())
+        if key in cache:
+            c["youtube_video_id"] = cache[key]
+            cache_hits += 1
+            print(f"  [yt] cached: {c['title']} — {c['artist']}")
+            continue
+
         query = f"{c['title']} {c['artist']}"
         try:
             video_id = yt.search_track(query, delay=0.5)
@@ -75,6 +61,9 @@ def _youtube_search(yt: YTMusicClient, candidates: list[dict]) -> list[dict]:
         c["youtube_video_id"] = video_id
         status = "found" if video_id else "not found"
         print(f"  [yt] {status}: {c['title']} — {c['artist']}")
+
+    if cache_hits:
+        print(f"  [yt] {cache_hits} tracks served from cache (no API calls)")
     return candidates
 
 
@@ -154,9 +143,9 @@ def publish_mix(
 
     yt = YTMusicClient(auth_file=auth_file)
 
-    # 3. YouTube search
+    # 3. YouTube search (uses cache from previous mixes to save quota)
     print(f"[publisher] Searching YouTube for {len(ranked_tracks)} tracks…")
-    _youtube_search(yt, ranked_tracks)
+    _youtube_search(yt, ranked_tracks, db_path)
 
     found = [t for t in ranked_tracks if t.get("youtube_video_id")]
     print(f"[publisher] {len(found)}/{len(ranked_tracks)} tracks found on YouTube")
