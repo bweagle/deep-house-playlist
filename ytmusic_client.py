@@ -81,6 +81,21 @@ class YTMusicClient:
         if existing:
             print(f"Found existing playlist: '{name}' ({existing})")
             return existing
+        return self._create_playlist(name, description)
+
+    def create_unique_playlist(self, name: str, description: str = "") -> str:
+        """
+        Always create a new playlist. If a playlist named `name` already
+        exists, appends .1, .2, … until an unused name is found.
+        """
+        candidate = name
+        n = 1
+        while self.find_playlist(candidate) is not None:
+            candidate = f"{name}.{n}"
+            n += 1
+        return self._create_playlist(candidate, description)
+
+    def _create_playlist(self, name: str, description: str = "") -> str:
         response = self.youtube.playlists().insert(
             part="snippet,status",
             body={

@@ -172,7 +172,7 @@ def publish_mix(
             "playlist_name_template", "Weekly Deep House Mix {week}"
         ).format(week=week)
 
-        playlist_id = yt.find_or_create_playlist(
+        playlist_id = yt.create_unique_playlist(
             name=playlist_name,
             description=(
                 f"Auto-generated weekly deep house mix — {week}. "
