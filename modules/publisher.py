@@ -150,6 +150,8 @@ def publish_mix(
         return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
 
     # 2. Connect to YouTube
+    from googleapiclient.errors import HttpError as YTHttpError
+
     yt = YTMusicClient(auth_file=auth_file)
 
     # 3. YouTube search
@@ -163,41 +165,52 @@ def publish_mix(
         print("[publisher] Dry-run mode — playlist not created.")
         return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks)}
 
-    # 4. Create dated archive playlist (always a fresh playlist)
-    week = datetime.now(timezone.utc).strftime("%Y-W%V")
-    playlist_name = config.get("youtube", {}).get(
-        "playlist_name_template", "Weekly Deep House Mix {week}"
-    ).format(week=week)
+    try:
+        # 4. Create dated archive playlist (always a fresh playlist)
+        week = datetime.now(timezone.utc).strftime("%Y-W%V")
+        playlist_name = config.get("youtube", {}).get(
+            "playlist_name_template", "Weekly Deep House Mix {week}"
+        ).format(week=week)
 
-    playlist_id = yt.find_or_create_playlist(
-        name=playlist_name,
-        description=(
-            f"Auto-generated weekly deep house mix — {week}. "
-            "Curated by catalog analyzer + AI recommendations."
-        ),
-    )
-
-    # 5. Add tracks to dated playlist
-    video_ids = [t["youtube_video_id"] for t in found]
-    added = yt.add_to_playlist(playlist_id, video_ids)
-    print(f"[publisher] {added} tracks added to playlist '{playlist_name}'")
-
-    # 6. Update pinned "current" playlist (find or create, then replace contents)
-    pinned_name = config.get("youtube", {}).get("pinned_playlist_name")
-    if pinned_name:
-        print(f"[publisher] Updating pinned playlist '{pinned_name}'…")
-        pinned_id = yt.find_or_create_playlist(
-            name=pinned_name,
-            description="Current weekly deep house mix — updated every week.",
+        playlist_id = yt.find_or_create_playlist(
+            name=playlist_name,
+            description=(
+                f"Auto-generated weekly deep house mix — {week}. "
+                "Curated by catalog analyzer + AI recommendations."
+            ),
         )
-        removed = yt.clear_playlist(pinned_id)
-        if removed:
-            print(f"[publisher] Cleared {removed} old tracks from '{pinned_name}'")
-        yt.add_to_playlist(pinned_id, video_ids)
-        print(f"[publisher] '{pinned_name}' updated with this week's {len(video_ids)} tracks")
 
-    # 7. Persist
-    _save_mix(run_id, playlist_id, playlist_name, ranked_tracks, db_path)
+        # 5. Add tracks to dated playlist
+        video_ids = [t["youtube_video_id"] for t in found]
+        added = yt.add_to_playlist(playlist_id, video_ids)
+        print(f"[publisher] {added} tracks added to playlist '{playlist_name}'")
+
+        # 6. Update pinned "current" playlist (find or create, then replace contents)
+        pinned_name = config.get("youtube", {}).get("pinned_playlist_name")
+        if pinned_name:
+            print(f"[publisher] Updating pinned playlist '{pinned_name}'…")
+            pinned_id = yt.find_or_create_playlist(
+                name=pinned_name,
+                description="Current weekly deep house mix — updated every week.",
+            )
+            removed = yt.clear_playlist(pinned_id)
+            if removed:
+                print(f"[publisher] Cleared {removed} old tracks from '{pinned_name}'")
+            yt.add_to_playlist(pinned_id, video_ids)
+            print(f"[publisher] '{pinned_name}' updated with this week's {len(video_ids)} tracks")
+
+        # 7. Persist
+        _save_mix(run_id, playlist_id, playlist_name, ranked_tracks, db_path)
+
+    except YTHttpError as e:
+        code = int(e.status_code) if hasattr(e, "status_code") else 0
+        if code in (403, 429):
+            print(
+                "\n[publisher] YouTube quota exhausted — playlist was not created.\n"
+                "Your daily quota resets at midnight Pacific time. Try again tomorrow."
+            )
+            return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks), "error": "quota"}
+        raise
 
     return {
         "playlist_id": playlist_id,

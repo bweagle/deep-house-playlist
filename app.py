@@ -131,23 +131,15 @@ def cmd_publish(args: argparse.Namespace) -> None:
     candidates = [dict(r) for r in rows]
     ranked = rank_and_filter(candidates, taste_profile, db_path, final_count)
 
-    sp = None
-    try:
-        from modules.recommender import build_spotify_client
-        if config.get("spotify", {}).get("client_id"):
-            sp = build_spotify_client(config)
-    except Exception:
-        pass
-
     result = publish_mix(
         config=config,
         db_path=db_path,
         run_id=run_id,
         ranked_tracks=ranked,
-        sp=sp,
         dry_run=args.dry_run,
     )
-    print(result)
+    if result.get("error") != "quota":
+        print(result)
 
 
 def cmd_generate_weekly(args: argparse.Namespace) -> None:
