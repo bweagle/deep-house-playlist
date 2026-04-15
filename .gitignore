@@ -1,3 +1,6 @@
+# Personal music catalog — use songs.example.csv as a template
+songs.csv
+
 # Auth credentials — never commit these
 oauth.json
 browser.json

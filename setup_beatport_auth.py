@@ -116,6 +116,14 @@ def _browser_auth() -> dict | None:
 # ---------------------------------------------------------------------------
 
 def main():
+    if not BEATPORT_CLIENT_ID:
+        print(
+            "Error: BEATPORT_CLIENT_ID is not set.\n"
+            "Open modules/beatport_client.py and follow the instructions\n"
+            "in the comment above BEATPORT_CLIENT_ID to find and set your client_id."
+        )
+        return 1
+
     parser = argparse.ArgumentParser(description="Set up Beatport authentication")
     parser.add_argument(
         "--method",

@@ -25,8 +25,14 @@ BEATPORT_AUTH_URL = "https://api.beatport.com/v4/auth/o/authorize/"
 BEATPORT_TOKEN_URL = "https://api.beatport.com/v4/auth/o/token/"
 BEATPORT_DOCS_URL = "https://api.beatport.com/v4/docs/"
 
-# Extracted from Beatport's bundled React app (API_CLIENT_ID constant)
-BEATPORT_CLIENT_ID = "0GIvkCltVIuPkkwSJHp6NDb3s0potTjLBQr388Dd"
+# The Beatport OAuth client_id is not distributed with this project.
+# To find it:
+#   1. Open https://api.beatport.com/v4/docs/ in your browser
+#   2. Open DevTools → Sources → search JS bundles for "CLIENT_ID" or "clientId"
+#   3. Look for a ~40-character alphanumeric string near OAuth/auth references
+# Then set it as an environment variable or paste it below:
+BEATPORT_CLIENT_ID = ""  # <-- paste your client_id here
+
 # Registered redirect URI (found in bundled JS: redirectUri: '...')
 BEATPORT_REDIRECT_URI = "https://api.beatport.com/v4/auth/o/post-message/"
 
