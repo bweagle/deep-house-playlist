@@ -6,8 +6,9 @@ oauth.json
 browser.json
 beatport_token.json
 
-# Pipeline config (contains API keys)
+# Pipeline config and local env (contain API keys)
 config.yaml
+.env
 
 # Pipeline state
 deephouse.db

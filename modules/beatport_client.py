@@ -30,8 +30,12 @@ BEATPORT_DOCS_URL = "https://api.beatport.com/v4/docs/"
 #   1. Open https://api.beatport.com/v4/docs/ in your browser
 #   2. Open DevTools → Sources → search JS bundles for "CLIENT_ID" or "clientId"
 #   3. Look for a ~40-character alphanumeric string near OAuth/auth references
-# Then set it as an environment variable or paste it below:
-BEATPORT_CLIENT_ID = ""  # <-- paste your client_id here
+#
+# Set it via environment variable (recommended):
+#   export BEATPORT_CLIENT_ID="your_client_id_here"
+# Or add it to a .env file in the project root:
+#   BEATPORT_CLIENT_ID=your_client_id_here
+BEATPORT_CLIENT_ID = os.environ.get("BEATPORT_CLIENT_ID", "")
 
 # Registered redirect URI (found in bundled JS: redirectUri: '...')
 BEATPORT_REDIRECT_URI = "https://api.beatport.com/v4/auth/o/post-message/"
