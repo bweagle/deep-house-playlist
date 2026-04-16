@@ -19,6 +19,9 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 BEATPORT_BASE = "https://api.beatport.com/v4"
 BEATPORT_AUTH_URL = "https://api.beatport.com/v4/auth/o/authorize/"
