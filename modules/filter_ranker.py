@@ -351,6 +351,13 @@ def rank_and_filter(
     if not candidates:
         return []
 
+    # Hard-exclude tracks over max duration (duration stored as milliseconds)
+    _10_MIN_MS = 10 * 60 * 1000
+    candidates = [
+        c for c in candidates
+        if not c.get("duration") or c["duration"] <= _10_MIN_MS
+    ]
+
     # Hard-exclude recently played tracks
     if exclude_recent_weeks > 0:
         recent = _get_recent_titles(db_path, exclude_recent_weeks)
