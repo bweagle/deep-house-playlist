@@ -18,7 +18,7 @@ import requests
 TOKEN_FILE = "soundcloud_token.json"
 REDIRECT_URI = "http://localhost"
 
-SOUNDCLOUD_AUTH_URL = "https://soundcloud.com/connect"
+SOUNDCLOUD_AUTH_URL = "https://secure.soundcloud.com/authorize"
 SOUNDCLOUD_TOKEN_URL = "https://api.soundcloud.com/oauth2/token"
 
 
