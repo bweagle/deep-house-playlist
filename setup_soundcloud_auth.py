@@ -19,7 +19,7 @@ from urllib.parse import parse_qs, urlencode, urlparse
 import requests
 
 TOKEN_FILE = "soundcloud_token.json"
-REDIRECT_URI = "http://localhost"
+REDIRECT_URI = "http://localhost:8080"
 
 SOUNDCLOUD_AUTH_URL = "https://secure.soundcloud.com/authorize"
 SOUNDCLOUD_TOKEN_URL = "https://api.soundcloud.com/oauth2/token"

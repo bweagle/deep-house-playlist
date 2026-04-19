@@ -117,7 +117,15 @@ class YTMusicClient:
                 kwargs["pageToken"] = page_token
             response = self.youtube.playlistItems().list(**kwargs).execute()
             for item in response.get("items", []):
-                self.youtube.playlistItems().delete(id=item["id"]).execute()
+                for attempt in range(3):
+                    try:
+                        self.youtube.playlistItems().delete(id=item["id"]).execute()
+                        break
+                    except HttpError as e:
+                        if int(e.status_code) == 409 and attempt < 2:
+                            time.sleep(2 ** attempt)
+                        else:
+                            raise
                 removed += 1
             page_token = response.get("nextPageToken")
             if not page_token:
