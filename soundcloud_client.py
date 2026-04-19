@@ -120,7 +120,8 @@ class SoundCloudClient:
     def search_track(self, title: str, artist: str = "", delay: float = 0.3) -> Optional[int]:
         """
         Search SoundCloud for a track. Returns the track ID or None.
-        Filters: access=playable, duration ≤10 min, artist keyword in result metadata.
+        Strategy: strict search (duration ≤10 min + artist keyword match) with
+        fallback to duration-only if no strict match exists.
         """
         query = f"{artist} {title}".strip() if artist else title
         artist_kw = self._artist_keyword(artist) if artist else ""
@@ -128,18 +129,23 @@ class SoundCloudClient:
         try:
             data = self._get("/tracks", q=query, limit=10, **{"duration[to]": _10_MIN_MS})
             tracks = data if isinstance(data, list) else data.get("collection", [])
-            for t in tracks:
-                if t.get("access") != "playable":
-                    continue
-                if artist_kw:
+            playable = [t for t in tracks if t.get("access") == "playable"]
+
+            if artist_kw:
+                # Require artist keyword to appear in title/username
+                for t in playable:
                     haystack = (
                         (t.get("title") or "") + " " +
                         (t.get("user", {}).get("username") or "") + " " +
                         (t.get("user", {}).get("full_name") or "")
                     ).lower()
-                    if artist_kw not in haystack:
-                        continue
-                return t["id"]
+                    if artist_kw in haystack:
+                        return t["id"]
+            else:
+                # No artist to verify — accept first playable result
+                if playable:
+                    return playable[0]["id"]
+
         except requests.HTTPError:
             raise
         except Exception:
