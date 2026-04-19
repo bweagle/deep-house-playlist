@@ -91,7 +91,9 @@ def cmd_rank(args: argparse.Namespace) -> None:
 
     candidates = [dict(r) for r in rows]
     ranked = rank_and_filter(candidates, taste_profile, db_path, final_count,
-                             exclude_recent_weeks=exclude_recent_weeks)
+                             exclude_recent_weeks=exclude_recent_weeks,
+                             min_bpm=config["pipeline"].get("min_bpm", 0),
+                             max_bpm=config["pipeline"].get("max_bpm", 0))
 
     print(f"\nRanked tracklist ({len(ranked)} tracks):")
     for t in ranked:
@@ -137,7 +139,9 @@ def cmd_publish(args: argparse.Namespace) -> None:
     candidates = [dict(r) for r in rows]
     exclude_weeks = 0 if soundcloud_only else config["pipeline"].get("exclude_recent_weeks", 4)
     ranked = rank_and_filter(candidates, taste_profile, db_path, final_count,
-                             exclude_recent_weeks=exclude_weeks)
+                             exclude_recent_weeks=exclude_weeks,
+                             min_bpm=config["pipeline"].get("min_bpm", 0),
+                             max_bpm=config["pipeline"].get("max_bpm", 0))
 
     result = publish_mix(
         config=config,

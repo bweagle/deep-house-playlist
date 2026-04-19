@@ -73,6 +73,7 @@ def init_db(db_path: str | Path = _DEFAULT_DB) -> None:
             reason          TEXT,
             score           REAL,
             rank            INTEGER,
+            duration_ms     INTEGER,
             created_at      TEXT
         );
 
@@ -114,4 +115,14 @@ def init_db(db_path: str | Path = _DEFAULT_DB) -> None:
         );
     """)
     conn.commit()
+
+    # Migrations — add columns introduced after initial schema
+    _migrate(conn)
     conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    existing = {r[1] for r in conn.execute("PRAGMA table_info(recommendations)").fetchall()}
+    if "duration_ms" not in existing:
+        conn.execute("ALTER TABLE recommendations ADD COLUMN duration_ms INTEGER")
+        conn.commit()

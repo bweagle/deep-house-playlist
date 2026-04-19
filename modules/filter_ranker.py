@@ -261,15 +261,21 @@ def score_candidates(
 # Greedy nearest-neighbour Camelot ordering
 # ---------------------------------------------------------------------------
 
-def _best_next(current_key: str, remaining: list[dict]) -> int:
-    best_idx, best_dist = 0, float("inf")
+def _best_next(current: dict, remaining: list[dict]) -> int:
+    """Pick the next track minimising a combined key + BPM cost."""
+    current_key = current.get("camelot_key") or current.get("key_camelot") or ""
+    current_bpm = current.get("bpm") or 0
+    best_idx, best_cost = 0, float("inf")
     for i, track in enumerate(remaining):
         key = track.get("camelot_key") or track.get("key_camelot") or ""
-        dist = camelot_distance(current_key, key)
-        if dist is None:
-            dist = 6
-        if dist < best_dist:
-            best_dist, best_idx = dist, i
+        key_dist = camelot_distance(current_key, key)
+        if key_dist is None:
+            key_dist = 6
+        bpm = track.get("bpm") or 0
+        bpm_dist = abs(current_bpm - bpm) / 10.0 if current_bpm and bpm else 0
+        cost = key_dist * 10 + bpm_dist
+        if cost < best_cost:
+            best_cost, best_idx = cost, i
     return best_idx
 
 
@@ -280,8 +286,7 @@ def harmonic_sort(tracks: list[dict]) -> list[dict]:
         return tracks
     ordered = [keyed.pop(0)]
     while keyed:
-        current = ordered[-1].get("camelot_key") or ordered[-1].get("key_camelot") or ""
-        ordered.append(keyed.pop(_best_next(current, keyed)))
+        ordered.append(keyed.pop(_best_next(ordered[-1], keyed)))
     return ordered + keyless
 
 
@@ -340,6 +345,8 @@ def rank_and_filter(
     final_count: int = 20,
     max_per_artist: int = 2,
     exclude_recent_weeks: int = 4,
+    min_bpm: int = 0,
+    max_bpm: int = 0,
 ) -> list[dict]:
     """
     Score, enforce per-artist cap, harmonically sort, then spread artists.
@@ -351,12 +358,29 @@ def rank_and_filter(
     if not candidates:
         return []
 
-    # Hard-exclude tracks over max duration (duration stored as milliseconds)
+    # Hard-exclude tracks over 10 minutes (duration_ms from Beatport)
     _10_MIN_MS = 10 * 60 * 1000
+    before = len(candidates)
     candidates = [
         c for c in candidates
-        if not c.get("duration") or c["duration"] <= _10_MIN_MS
+        if not c.get("duration_ms") or c["duration_ms"] <= _10_MIN_MS
     ]
+    if len(candidates) < before:
+        print(f"[ranker] Excluded {before - len(candidates)} tracks over 10 minutes")
+
+    # Hard-exclude tracks outside BPM range
+    if min_bpm or max_bpm:
+        before = len(candidates)
+        candidates = [
+            c for c in candidates
+            if not c.get("bpm")
+            or (
+                (not min_bpm or c["bpm"] >= min_bpm)
+                and (not max_bpm or c["bpm"] <= max_bpm)
+            )
+        ]
+        if len(candidates) < before:
+            print(f"[ranker] Excluded {before - len(candidates)} tracks outside BPM range {min_bpm}–{max_bpm}")
 
     # Hard-exclude recently played tracks
     if exclude_recent_weeks > 0:

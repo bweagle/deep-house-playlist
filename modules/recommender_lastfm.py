@@ -174,8 +174,8 @@ def _save_candidates(candidates: list[dict], db_path: str) -> None:
             INSERT INTO recommendations
                 (run_id, source, title, artist, spotify_id, beatport_id,
                  bpm, camelot_key, genre, sub_genre, label, release_date,
-                 reason, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 reason, duration_ms, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 c["run_id"], c["source"], c["title"], c["artist"],
@@ -183,7 +183,7 @@ def _save_candidates(candidates: list[dict], db_path: str) -> None:
                 c.get("bpm"), c.get("camelot_key"),
                 c.get("genre"), c.get("sub_genre"),
                 c.get("label"), c.get("release_date"),
-                c.get("reason"), now,
+                c.get("reason"), c.get("duration"), now,
             ),
         )
     conn.commit()
