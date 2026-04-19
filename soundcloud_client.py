@@ -31,6 +31,29 @@ class SoundCloudClient:
             self._token = json.load(f)
 
     # ------------------------------------------------------------------
+    # Token management
+    # ------------------------------------------------------------------
+
+    def _refresh(self) -> None:
+        """Exchange the refresh_token for a new access_token and save it."""
+        resp = requests.post(
+            SOUNDCLOUD_TOKEN_URL,
+            data={
+                "grant_type": "refresh_token",
+                "client_id": self._token["client_id"],
+                "client_secret": self._token.get("client_secret", ""),
+                "refresh_token": self._token["refresh_token"],
+            },
+            timeout=15,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"Token refresh failed: {resp.status_code} {resp.text[:200]}")
+        new = resp.json()
+        self._token.update(new)
+        with self.token_file.open("w") as f:
+            json.dump(self._token, f, indent=2)
+
+    # ------------------------------------------------------------------
     # HTTP helpers
     # ------------------------------------------------------------------
 
@@ -44,17 +67,25 @@ class SoundCloudClient:
             params={k: v for k, v in params.items() if v is not None},
             timeout=15,
         )
+        if resp.status_code == 401:
+            self._refresh()
+            resp = requests.get(
+                f"{SOUNDCLOUD_BASE}{path}",
+                headers=self._headers(),
+                params={k: v for k, v in params.items() if v is not None},
+                timeout=15,
+            )
         resp.raise_for_status()
         return resp.json()
 
     def _post(self, path: str, body: dict) -> dict:
         raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
-        resp = requests.post(
-            f"{SOUNDCLOUD_BASE}{path}",
-            headers={**self._headers(), "Content-Type": "application/json; charset=utf-8"},
-            data=raw,
-            timeout=15,
-        )
+        headers = {**self._headers(), "Content-Type": "application/json; charset=utf-8"}
+        resp = requests.post(f"{SOUNDCLOUD_BASE}{path}", headers=headers, data=raw, timeout=15)
+        if resp.status_code == 401:
+            self._refresh()
+            headers = {**self._headers(), "Content-Type": "application/json; charset=utf-8"}
+            resp = requests.post(f"{SOUNDCLOUD_BASE}{path}", headers=headers, data=raw, timeout=15)
         if not resp.ok:
             raise requests.HTTPError(
                 f"{resp.status_code} {resp.reason} — {resp.text[:400]}", response=resp
@@ -62,12 +93,13 @@ class SoundCloudClient:
         return resp.json()
 
     def _put(self, path: str, body: dict) -> dict:
-        resp = requests.put(
-            f"{SOUNDCLOUD_BASE}{path}",
-            headers={**self._headers(), "Content-Type": "application/json; charset=utf-8"},
-            data=json.dumps(body, separators=(",", ":")).encode("utf-8"),
-            timeout=15,
-        )
+        raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
+        headers = {**self._headers(), "Content-Type": "application/json; charset=utf-8"}
+        resp = requests.put(f"{SOUNDCLOUD_BASE}{path}", headers=headers, data=raw, timeout=15)
+        if resp.status_code == 401:
+            self._refresh()
+            headers = {**self._headers(), "Content-Type": "application/json; charset=utf-8"}
+            resp = requests.put(f"{SOUNDCLOUD_BASE}{path}", headers=headers, data=raw, timeout=15)
         resp.raise_for_status()
         return resp.json()
 

@@ -43,6 +43,8 @@ def main():
         print("Client ID is required.")
         return 1
 
+    client_secret = input("  Client Secret: ").strip()
+
     code_verifier, code_challenge = _pkce_pair()
     state = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
 
@@ -99,6 +101,8 @@ def main():
 
     token_data = resp.json()
     token_data["client_id"] = client_id
+    if client_secret:
+        token_data["client_secret"] = client_secret
 
     with open(TOKEN_FILE, "w") as f:
         json.dump(token_data, f, indent=2)
