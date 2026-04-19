@@ -40,7 +40,6 @@ def main():
             "client_id": client_id,
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
-            "scope": "non-expiring",
         })
     )
 
