@@ -48,10 +48,11 @@ class SoundCloudClient:
         return resp.json()
 
     def _post(self, path: str, body: dict) -> dict:
+        raw = json.dumps(body, separators=(",", ":")).encode("utf-8")
         resp = requests.post(
             f"{SOUNDCLOUD_BASE}{path}",
             headers={**self._headers(), "Content-Type": "application/json; charset=utf-8"},
-            data=json.dumps(body, separators=(",", ":")).encode("utf-8"),
+            data=raw,
             timeout=15,
         )
         if not resp.ok:
@@ -82,8 +83,9 @@ class SoundCloudClient:
         try:
             data = self._get("/tracks", q=query, limit=5)
             tracks = data if isinstance(data, list) else data.get("collection", [])
-            if tracks:
-                return tracks[0]["id"]
+            for t in tracks:
+                if t.get("access") == "playable":
+                    return t["id"]
         except requests.HTTPError as e:
             raise
         except Exception:
@@ -114,7 +116,7 @@ class SoundCloudClient:
             "playlist": {
                 "title": name,
                 "sharing": "public" if public else "private",
-                "tracks": [{"id": tid} for tid in track_ids],
+                "tracks": [{"urn": f"soundcloud:tracks:{tid}"} for tid in track_ids],
             }
         }
         data = self._post("/playlists", body)
@@ -126,7 +128,7 @@ class SoundCloudClient:
         """Replace all tracks in an existing playlist."""
         body = {
             "playlist": {
-                "tracks": [{"id": tid} for tid in track_ids],
+                "tracks": [{"urn": f"soundcloud:tracks:{tid}"} for tid in track_ids],
             }
         }
         self._put(f"/playlists/{playlist_id}", body)
