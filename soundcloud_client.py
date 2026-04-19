@@ -51,17 +51,20 @@ class SoundCloudClient:
         resp = requests.post(
             f"{SOUNDCLOUD_BASE}{path}",
             headers={**self._headers(), "Content-Type": "application/json; charset=utf-8"},
-            json=body,
+            data=json.dumps(body, separators=(",", ":")).encode("utf-8"),
             timeout=15,
         )
-        resp.raise_for_status()
+        if not resp.ok:
+            raise requests.HTTPError(
+                f"{resp.status_code} {resp.reason} — {resp.text[:400]}", response=resp
+            )
         return resp.json()
 
     def _put(self, path: str, body: dict) -> dict:
         resp = requests.put(
             f"{SOUNDCLOUD_BASE}{path}",
             headers={**self._headers(), "Content-Type": "application/json; charset=utf-8"},
-            json=body,
+            data=json.dumps(body, separators=(",", ":")).encode("utf-8"),
             timeout=15,
         )
         resp.raise_for_status()
