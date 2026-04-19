@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Set up SoundCloud authentication.
+Set up SoundCloud authentication using OAuth 2.0 with PKCE.
 
 Requires a registered SoundCloud app:
   https://soundcloud.com/you/apps
@@ -9,7 +9,10 @@ Usage:
     python3 setup_soundcloud_auth.py
 """
 
+import base64
+import hashlib
 import json
+import os
 import webbrowser
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -22,17 +25,26 @@ SOUNDCLOUD_AUTH_URL = "https://secure.soundcloud.com/authorize"
 SOUNDCLOUD_TOKEN_URL = "https://api.soundcloud.com/oauth2/token"
 
 
+def _pkce_pair() -> tuple[str, str]:
+    """Generate a (code_verifier, code_challenge) pair for PKCE."""
+    code_verifier = base64.urlsafe_b64encode(os.urandom(40)).rstrip(b"=").decode()
+    digest = hashlib.sha256(code_verifier.encode()).digest()
+    code_challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return code_verifier, code_challenge
+
+
 def main():
     print("SoundCloud authentication setup")
     print("You will need a registered SoundCloud app.")
     print("Register one at: https://soundcloud.com/you/apps\n")
 
     client_id = input("  Client ID: ").strip()
-    client_secret = input("  Client Secret: ").strip()
-
-    if not client_id or not client_secret:
-        print("Client ID and secret are required.")
+    if not client_id:
+        print("Client ID is required.")
         return 1
+
+    code_verifier, code_challenge = _pkce_pair()
+    state = base64.urlsafe_b64encode(os.urandom(16)).rstrip(b"=").decode()
 
     auth_url = (
         f"{SOUNDCLOUD_AUTH_URL}?"
@@ -40,6 +52,9 @@ def main():
             "client_id": client_id,
             "redirect_uri": REDIRECT_URI,
             "response_type": "code",
+            "code_challenge": code_challenge,
+            "code_challenge_method": "S256",
+            "state": state,
         })
     )
 
@@ -48,6 +63,7 @@ def main():
     webbrowser.open(auth_url)
 
     print("After you authorize, your browser will redirect to a localhost URL.")
+    print("The page will appear blank (nothing runs on localhost) — that's normal.")
     print("Copy the full URL from the address bar and paste it here:")
     url = input("  URL: ").strip()
 
@@ -57,6 +73,10 @@ def main():
             print("No 'code' parameter found. Make sure you copied the full redirect URL.")
             return 1
         code = params["code"][0]
+        returned_state = params.get("state", [None])[0]
+        if returned_state and returned_state != state:
+            print("State mismatch — possible CSRF. Please try again.")
+            return 1
     else:
         code = url  # user pasted just the code
 
@@ -66,9 +86,9 @@ def main():
         data={
             "grant_type": "authorization_code",
             "client_id": client_id,
-            "client_secret": client_secret,
             "redirect_uri": REDIRECT_URI,
             "code": code,
+            "code_verifier": code_verifier,
         },
         timeout=15,
     )
@@ -79,7 +99,6 @@ def main():
 
     token_data = resp.json()
     token_data["client_id"] = client_id
-    token_data["client_secret"] = client_secret
 
     with open(TOKEN_FILE, "w") as f:
         json.dump(token_data, f, indent=2)
