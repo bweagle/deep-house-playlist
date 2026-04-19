@@ -41,12 +41,12 @@ jobs:
             api_key: "${{ secrets.ANTHROPIC_API_KEY }}"
           soundcloud:
             token_file: soundcloud_token.json
-            playlist_name_template: "Weekly Deep House Mix {week}"
-            pinned_playlist_name: "My Weekly Mix"
+            playlist_name_template: "WM {week}"
+            pinned_playlist_name: "WM Latest"
           youtube:
             oauth_file: oauth.json
-            playlist_name_template: "Weekly Deep House Mix {week}"
-            pinned_playlist_name: "My Weekly Mix"
+            playlist_name_template: "WM {week}"
+            pinned_playlist_name: "WM Latest"
           pipeline:
             database: deephouse.db
             catalog_csv: songs.csv

@@ -107,18 +107,40 @@ class SoundCloudClient:
     # Track search
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _artist_keyword(artist: str) -> str:
+        """Return the first significant word of the primary artist name (before any comma)."""
+        import re
+        primary = artist.split(",")[0].strip()
+        words = re.sub(r"[^a-z0-9 ]", "", primary.lower()).split()
+        stop = {"the", "a", "an", "dj", "mc", "and", "feat", "ft", "vs", "b2b"}
+        sig = [w for w in words if w not in stop and len(w) > 1]
+        return sig[0] if sig else ""
+
     def search_track(self, title: str, artist: str = "", delay: float = 0.3) -> Optional[int]:
         """
         Search SoundCloud for a track. Returns the track ID or None.
+        Filters: access=playable, duration ≤10 min, artist keyword in result metadata.
         """
         query = f"{artist} {title}".strip() if artist else title
+        artist_kw = self._artist_keyword(artist) if artist else ""
+        _10_MIN_MS = 10 * 60 * 1000
         try:
-            data = self._get("/tracks", q=query, limit=5)
+            data = self._get("/tracks", q=query, limit=10, **{"duration[to]": _10_MIN_MS})
             tracks = data if isinstance(data, list) else data.get("collection", [])
             for t in tracks:
-                if t.get("access") == "playable":
-                    return t["id"]
-        except requests.HTTPError as e:
+                if t.get("access") != "playable":
+                    continue
+                if artist_kw:
+                    haystack = (
+                        (t.get("title") or "") + " " +
+                        (t.get("user", {}).get("username") or "") + " " +
+                        (t.get("user", {}).get("full_name") or "")
+                    ).lower()
+                    if artist_kw not in haystack:
+                        continue
+                return t["id"]
+        except requests.HTTPError:
             raise
         except Exception:
             pass
