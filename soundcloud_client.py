@@ -193,13 +193,27 @@ class SoundCloudClient:
         }
         self._put(f"/playlists/{playlist_id}", body)
 
+    def delete_playlist(self, playlist_id: int) -> None:
+        """Delete a playlist by ID."""
+        resp = requests.delete(
+            f"{SOUNDCLOUD_BASE}/playlists/{playlist_id}",
+            headers=self._headers(),
+            timeout=15,
+        )
+        if resp.status_code == 401:
+            self._refresh()
+            requests.delete(
+                f"{SOUNDCLOUD_BASE}/playlists/{playlist_id}",
+                headers=self._headers(),
+                timeout=15,
+            )
+
     def find_or_create_playlist(self, name: str, track_ids: list[int]) -> int:
-        """Update existing playlist by name, or create a new one."""
+        """Delete existing playlist by name and recreate it fresh (PUT accumulates tracks)."""
         existing = self.find_playlist(name)
         if existing:
-            print(f"  [sc] Updating existing playlist: '{name}' ({existing})")
-            self.update_playlist(existing, track_ids)
-            return existing
+            print(f"  [sc] Replacing pinned playlist '{name}'…")
+            self.delete_playlist(existing)
         return self.create_playlist(name, track_ids)
 
     def create_unique_playlist(self, name: str, track_ids: list[int]) -> int:
