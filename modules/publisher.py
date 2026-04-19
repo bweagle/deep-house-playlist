@@ -176,6 +176,7 @@ def publish_mix(
     ranked_tracks: list[dict],
     sp=None,
     dry_run: bool = False,
+    soundcloud_only: bool = False,
 ) -> dict:
     """
     Full publish flow:
@@ -187,6 +188,15 @@ def publish_mix(
     Returns a summary dict with playlist_id and track counts.
     """
     auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
+
+    # SoundCloud-only mode: skip YouTube entirely
+    if soundcloud_only:
+        print("[publisher] SoundCloud-only mode — skipping YouTube.")
+        week = datetime.now(timezone.utc).strftime("%Y-W%V")
+        sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+        if Path(sc_token).exists():
+            _publish_soundcloud(config, ranked_tracks, week)
+        return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
 
     # Skip YouTube interaction in CI unless explicitly enabled
     if os.environ.get("CI") and not os.environ.get("YOUTUBE_PUBLISH"):

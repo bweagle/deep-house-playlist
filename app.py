@@ -142,6 +142,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
         run_id=run_id,
         ranked_tracks=ranked,
         dry_run=args.dry_run,
+        soundcloud_only=getattr(args, "soundcloud_only", False),
     )
     if result.get("error") != "quota":
         print(result)
@@ -190,6 +191,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Run ID to publish (default: most recent)")
     p_pub.add_argument("--dry-run", action="store_true",
                        help="Search YouTube but do not create playlist")
+    p_pub.add_argument("--soundcloud-only", dest="soundcloud_only", action="store_true",
+                       help="Skip YouTube entirely, publish to SoundCloud only")
 
     # generate-weekly
     p_gen = sub.add_parser("generate-weekly", help="Full pipeline: recommend → rank → publish")
