@@ -9,6 +9,7 @@ Saves the result to the weekly_mixes and mix_tracks tables.
 import os
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 
 from modules.db import get_connection
 from ytmusic_client import YTMusicClient
@@ -114,6 +115,60 @@ def _save_mix(
     conn.close()
 
 
+def _publish_soundcloud(config: dict, ranked_tracks: list[dict], week: str) -> None:
+    """Search SoundCloud for each track and publish to a dated + pinned playlist."""
+    from soundcloud_client import SoundCloudClient
+
+    sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+    playlist_template = config.get("soundcloud", {}).get(
+        "playlist_name_template",
+        config.get("youtube", {}).get("playlist_name_template", "Weekly Deep House Mix {week}"),
+    ).format(week=week)
+    pinned_name = config.get("soundcloud", {}).get(
+        "pinned_playlist_name",
+        config.get("youtube", {}).get("pinned_playlist_name"),
+    )
+
+    try:
+        sc = SoundCloudClient(token_file=sc_token)
+    except FileNotFoundError:
+        return
+
+    print(f"[soundcloud] Searching for {len(ranked_tracks)} tracks…")
+    track_ids: list[int] = []
+    consecutive_errors = 0
+
+    for t in ranked_tracks:
+        try:
+            tid = sc.search_track(t["title"], t["artist"])
+            consecutive_errors = 0
+        except Exception as e:
+            consecutive_errors += 1
+            print(f"  [sc] Search error for '{t['title']}': {e}")
+            if consecutive_errors >= 3:
+                print("  [sc] Stopping after 3 consecutive errors.")
+                break
+            continue
+
+        if tid:
+            track_ids.append(tid)
+            print(f"  [sc] found: {t['title']} — {t['artist']}")
+        else:
+            print(f"  [sc] not found: {t['title']} — {t['artist']}")
+
+    print(f"[soundcloud] {len(track_ids)}/{len(ranked_tracks)} tracks found")
+    if not track_ids:
+        return
+
+    try:
+        sc.create_unique_playlist(playlist_template, track_ids)
+        if pinned_name:
+            print(f"[soundcloud] Updating pinned playlist '{pinned_name}'…")
+            sc.find_or_create_playlist(pinned_name, track_ids)
+    except Exception as e:
+        print(f"[soundcloud] Playlist creation failed: {e}")
+
+
 def publish_mix(
     config: dict,
     db_path: str,
@@ -150,13 +205,17 @@ def publish_mix(
     found = [t for t in ranked_tracks if t.get("youtube_video_id")]
     print(f"[publisher] {len(found)}/{len(ranked_tracks)} tracks found on YouTube")
 
+    week = datetime.now(timezone.utc).strftime("%Y-W%V")
+
     if dry_run:
-        print("[publisher] Dry-run mode — playlist not created.")
+        print("[publisher] Dry-run mode — YouTube playlist not created.")
+        sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+        if Path(sc_token).exists():
+            _publish_soundcloud(config, ranked_tracks, week)
         return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks)}
 
     try:
         # 4. Create dated archive playlist (always a fresh playlist)
-        week = datetime.now(timezone.utc).strftime("%Y-W%V")
         playlist_name = config.get("youtube", {}).get(
             "playlist_name_template", "Weekly Deep House Mix {week}"
         ).format(week=week)
@@ -201,10 +260,17 @@ def publish_mix(
             return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks), "error": "quota"}
         raise
 
-    return {
+    result = {
         "playlist_id": playlist_id,
         "playlist_name": playlist_name,
         "found": len(found),
         "added": added,
         "total": len(ranked_tracks),
     }
+
+    # 8. SoundCloud publish (optional)
+    sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+    if Path(sc_token).exists():
+        _publish_soundcloud(config, ranked_tracks, week)
+
+    return result

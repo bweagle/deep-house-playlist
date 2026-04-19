@@ -5,6 +5,7 @@ songs.csv
 oauth.json
 browser.json
 beatport_token.json
+soundcloud_token.json
 
 # Pipeline config and local env (contain API keys)
 config.yaml

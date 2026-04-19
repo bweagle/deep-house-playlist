@@ -11,6 +11,11 @@ lastfm:
 anthropic:
   api_key: "YOUR_ANTHROPIC_API_KEY"
 
+soundcloud:
+  token_file: "soundcloud_token.json"
+  playlist_name_template: "Weekly Deep House Mix {week}"
+  pinned_playlist_name: "My Weekly Mix"
+
 youtube:
   oauth_file: "oauth.json"
   playlist_name_template: "Weekly Deep House Mix {week}"
