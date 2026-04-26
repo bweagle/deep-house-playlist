@@ -13,7 +13,10 @@ config.yaml
 
 # Pipeline state
 deephouse.db
+deephouse.db-shm
+deephouse.db-wal
 progress.json
+.cache
 
 # Python
 __pycache__/
