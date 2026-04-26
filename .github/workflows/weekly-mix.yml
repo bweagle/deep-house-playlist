@@ -65,7 +65,16 @@ jobs:
           key: deephouse-db-${{ github.run_number }}
           restore-keys: deephouse-db-
 
-      - name: Write Beatport token
+      - name: Restore Beatport token cache
+        id: beatport-cache
+        uses: actions/cache@v4
+        with:
+          path: beatport_token.json
+          key: beatport-token-${{ github.run_id }}
+          restore-keys: beatport-token-
+
+      - name: Write Beatport token from secret (cache miss only)
+        if: steps.beatport-cache.outputs.cache-hit != 'true'
         run: echo '${{ secrets.BEATPORT_TOKEN_JSON }}' > beatport_token.json
 
       - name: Write YouTube OAuth credentials
