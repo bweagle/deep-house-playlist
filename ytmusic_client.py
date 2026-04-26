@@ -151,15 +151,25 @@ class YTMusicClient:
         h, mins, s = (int(x or 0) for x in m.groups())
         return h * 3600 + mins * 60 + s
 
-    def search_track(self, query: str, title: str = "", delay: float = 0.5) -> Optional[str]:
+    @staticmethod
+    def _artist_keyword(artist: str) -> str:
+        """First significant word of the primary artist name (before any comma)."""
+        import re
+        primary = artist.split(",")[0].strip()
+        words = re.sub(r"[^a-z0-9 ]", "", primary.lower()).split()
+        stop = {"the", "a", "an", "dj", "mc", "and", "feat", "ft", "vs", "b2b"}
+        sig = [w for w in words if w not in stop and len(w) > 1]
+        return sig[0] if sig else ""
+
+    def search_track(self, query: str, title: str = "", artist: str = "", delay: float = 0.5) -> Optional[str]:
         """
         Search YouTube for a song and return the best matching videoId.
 
-        Fetches up to 5 candidates, then batch-checks their durations via
-        videos.list (1 quota unit). Requires:
+        Fetches up to 5 candidates, then batch-checks via videos.list (1 quota unit).
+        A result is accepted only when ALL conditions hold:
           1. Duration between 3 and 10 minutes
           2. At least one significant word from `title` in the video title
-             (prevents live sets, DJ mixes, and wrong-track matches)
+          3. Artist keyword appears in the channel name (when artist is provided)
 
         Raises HttpError so callers can detect quota exhaustion (403/429).
         """
@@ -172,6 +182,7 @@ class YTMusicClient:
              if w not in _STOP and len(w) > 2}
             if title else set()
         )
+        artist_kw = self._artist_keyword(artist) if artist else ""
 
         try:
             response = self.youtube.search().list(
@@ -187,23 +198,34 @@ class YTMusicClient:
 
             video_ids = [item["id"]["videoId"] for item in items]
 
-            # Batch-fetch duration + title (costs 1 quota unit for all 5)
+            # Batch-fetch duration + title + channel (costs 1 quota unit for all 5)
             details = self.youtube.videos().list(
                 part="contentDetails,snippet",
                 id=",".join(video_ids),
             ).execute()
 
             for vid in details.get("items", []):
+                # 1. Duration check
                 secs = self._iso_duration_seconds(
                     vid.get("contentDetails", {}).get("duration", "")
                 )
                 if not (_3_MIN <= secs <= _10_MIN):
                     continue
 
+                snippet = vid.get("snippet", {})
+
+                # 2. Title word overlap
                 if title_words:
-                    yt_title = vid.get("snippet", {}).get("title", "").lower()
+                    yt_title = snippet.get("title", "").lower()
                     yt_words = set(re.sub(r"[^a-z0-9 ]", " ", yt_title).split())
                     if not (title_words & yt_words):
+                        continue
+
+                # 3. Artist keyword in channel name
+                if artist_kw:
+                    channel = re.sub(r"[^a-z0-9 ]", " ",
+                                     snippet.get("channelTitle", "").lower())
+                    if artist_kw not in channel:
                         continue
 
                 return vid["id"]
