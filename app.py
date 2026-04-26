@@ -89,9 +89,12 @@ def cmd_rank(args: argparse.Namespace) -> None:
     if not rows:
         sys.exit("No recommendations found. Run `recommend` first.")
 
+    dev = getattr(args, "dev", False)
+    if dev:
+        print("[dev] Skipping recent-exclusion filter.")
     candidates = [dict(r) for r in rows]
     ranked = rank_and_filter(candidates, taste_profile, db_path, final_count,
-                             exclude_recent_weeks=exclude_recent_weeks,
+                             exclude_recent_weeks=0 if dev else exclude_recent_weeks,
                              min_bpm=config["pipeline"].get("min_bpm", 0),
                              max_bpm=config["pipeline"].get("max_bpm", 0))
 
@@ -136,9 +139,20 @@ def cmd_publish(args: argparse.Namespace) -> None:
     conn.close()
 
     soundcloud_only = getattr(args, "soundcloud_only", False)
+    dev = getattr(args, "dev", False)
     candidates = [dict(r) for r in rows]
-    exclude_weeks = 0 if soundcloud_only else config["pipeline"].get("exclude_recent_weeks", 4)
-    ranked = rank_and_filter(candidates, taste_profile, db_path, final_count,
+
+    # dev mode and soundcloud-only both skip the recent-exclusion filter
+    if dev or soundcloud_only:
+        exclude_weeks = 0
+        if dev:
+            print("[dev] Skipping recent-exclusion filter.")
+    else:
+        exclude_weeks = config["pipeline"].get("exclude_recent_weeks", 4)
+
+    # For SoundCloud-only: rank a 2× pool so we can still hit 20 despite lower SC availability
+    sc_candidate_pool = final_count * 2 if soundcloud_only else final_count
+    ranked = rank_and_filter(candidates, taste_profile, db_path, sc_candidate_pool,
                              exclude_recent_weeks=exclude_weeks,
                              min_bpm=config["pipeline"].get("min_bpm", 0),
                              max_bpm=config["pipeline"].get("max_bpm", 0))
@@ -150,6 +164,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
         ranked_tracks=ranked,
         dry_run=args.dry_run,
         soundcloud_only=soundcloud_only,
+        sc_target_count=final_count,
     )
     if result.get("error") != "quota":
         print(result)
@@ -191,6 +206,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_rank = sub.add_parser("rank", help="Score and rank saved candidates")
     p_rank.add_argument("--run-id", dest="run_id", default=None,
                         help="Run ID to rank (default: most recent)")
+    p_rank.add_argument("--dev", action="store_true",
+                        help="Skip recent-exclusion filter (show all candidates)")
 
     # publish
     p_pub = sub.add_parser("publish", help="Create YouTube playlist from ranked candidates")
@@ -200,11 +217,15 @@ def build_parser() -> argparse.ArgumentParser:
                        help="Search YouTube but do not create playlist")
     p_pub.add_argument("--soundcloud-only", dest="soundcloud_only", action="store_true",
                        help="Skip YouTube entirely, publish to SoundCloud only")
+    p_pub.add_argument("--dev", action="store_true",
+                       help="Skip recent-exclusion filter")
 
     # generate-weekly
     p_gen = sub.add_parser("generate-weekly", help="Full pipeline: recommend → rank → publish")
     p_gen.add_argument("--dry-run", action="store_true",
                        help="Run full pipeline but skip playlist creation")
+    p_gen.add_argument("--dev", action="store_true",
+                       help="Skip recent-exclusion filter")
 
     return parser
 

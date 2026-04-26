@@ -279,15 +279,44 @@ def _best_next(current: dict, remaining: list[dict]) -> int:
     return best_idx
 
 
+def _path_cost(ordered: list[dict]) -> float:
+    """Total key+BPM transition cost for a given ordering."""
+    cost = 0.0
+    for i in range(len(ordered) - 1):
+        key_a = ordered[i].get("camelot_key") or ordered[i].get("key_camelot") or ""
+        key_b = ordered[i + 1].get("camelot_key") or ordered[i + 1].get("key_camelot") or ""
+        bpm_a = ordered[i].get("bpm") or 0
+        bpm_b = ordered[i + 1].get("bpm") or 0
+        key_dist = camelot_distance(key_a, key_b)
+        if key_dist is None:
+            key_dist = 6
+        bpm_dist = abs(bpm_a - bpm_b) / 10.0 if bpm_a and bpm_b else 0
+        cost += key_dist * 10 + bpm_dist
+    return cost
+
+
 def harmonic_sort(tracks: list[dict]) -> list[dict]:
     keyed = [t for t in tracks if t.get("camelot_key") or t.get("key_camelot")]
     keyless = [t for t in tracks if not (t.get("camelot_key") or t.get("key_camelot"))]
     if not keyed:
         return tracks
-    ordered = [keyed.pop(0)]
-    while keyed:
-        ordered.append(keyed.pop(_best_next(ordered[-1], keyed)))
-    return ordered + keyless
+
+    # Try every possible starting track and keep the path with the lowest total cost.
+    # For playlist sizes of 12-20 this is fast (O(n²)) and avoids stranding a
+    # harmonically similar track at the opposite end from where it should be.
+    best_ordered: list[dict] = []
+    best_cost = float("inf")
+    for start_idx in range(len(keyed)):
+        remaining = list(keyed)
+        path = [remaining.pop(start_idx)]
+        while remaining:
+            path.append(remaining.pop(_best_next(path[-1], remaining)))
+        cost = _path_cost(path)
+        if cost < best_cost:
+            best_cost = cost
+            best_ordered = path
+
+    return best_ordered + keyless
 
 
 # ---------------------------------------------------------------------------
@@ -368,16 +397,19 @@ def rank_and_filter(
     if len(candidates) < before:
         print(f"[ranker] Excluded {before - len(candidates)} tracks over 10 minutes")
 
+    # Hard-exclude tracks with no BPM (couldn't be matched on Beatport)
+    before = len(candidates)
+    candidates = [c for c in candidates if c.get("bpm")]
+    if len(candidates) < before:
+        print(f"[ranker] Excluded {before - len(candidates)} tracks with no BPM data (no Beatport match)")
+
     # Hard-exclude tracks outside BPM range
     if min_bpm or max_bpm:
         before = len(candidates)
         candidates = [
             c for c in candidates
-            if not c.get("bpm")
-            or (
-                (not min_bpm or c["bpm"] >= min_bpm)
-                and (not max_bpm or c["bpm"] <= max_bpm)
-            )
+            if (not min_bpm or c["bpm"] >= min_bpm)
+            and (not max_bpm or c["bpm"] <= max_bpm)
         ]
         if len(candidates) < before:
             print(f"[ranker] Excluded {before - len(candidates)} tracks outside BPM range {min_bpm}–{max_bpm}")

@@ -115,9 +115,22 @@ def _save_mix(
     conn.close()
 
 
-def _publish_soundcloud(config: dict, ranked_tracks: list[dict], week: str) -> None:
-    """Search SoundCloud for each track and publish to a dated + pinned playlist."""
+def _publish_soundcloud(
+    config: dict,
+    ranked_tracks: list[dict],
+    week: str,
+    target_count: int = 0,
+) -> None:
+    """
+    Search SoundCloud for each track and publish to a dated + pinned playlist.
+
+    ranked_tracks may be a larger pool (e.g. 2× the desired size).
+    target_count caps how many SC tracks to collect before stopping the search.
+    After collecting, the found tracks are re-sorted harmonically so the
+    playlist order reflects SC availability, not the original ranking order.
+    """
     from soundcloud_client import SoundCloudClient
+    from modules.filter_ranker import harmonic_sort, _spread_artists
 
     sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
     playlist_template = config.get("soundcloud", {}).get(
@@ -129,16 +142,22 @@ def _publish_soundcloud(config: dict, ranked_tracks: list[dict], week: str) -> N
         config.get("youtube", {}).get("pinned_playlist_name"),
     )
 
+    if target_count <= 0:
+        target_count = len(ranked_tracks)
+
     try:
         sc = SoundCloudClient(token_file=sc_token)
     except FileNotFoundError:
         return
 
-    print(f"[soundcloud] Searching for {len(ranked_tracks)} tracks…")
+    print(f"[soundcloud] Searching up to {len(ranked_tracks)} candidates for {target_count} tracks…")
+    found_tracks: list[dict] = []   # full track dicts for re-sorting
     track_ids: list[int] = []
     consecutive_errors = 0
 
     for t in ranked_tracks:
+        if len(track_ids) >= target_count:
+            break
         try:
             tid = sc.search_track(t["title"], t["artist"])
             consecutive_errors = 0
@@ -151,14 +170,26 @@ def _publish_soundcloud(config: dict, ranked_tracks: list[dict], week: str) -> N
             continue
 
         if tid:
+            found_tracks.append({**t, "sc_track_id": tid})
             track_ids.append(tid)
-            print(f"  [sc] found: {t['title']} — {t['artist']}")
+            print(f"  [sc] found ({len(track_ids)}/{target_count}): {t['title']} — {t['artist']}")
         else:
             print(f"  [sc] not found: {t['title']} — {t['artist']}")
 
-    print(f"[soundcloud] {len(track_ids)}/{len(ranked_tracks)} tracks found")
+    print(f"[soundcloud] {len(track_ids)}/{len(ranked_tracks)} candidates searched, {len(track_ids)} found")
     if not track_ids:
         return
+
+    # Re-sort the found tracks harmonically (they may be a non-contiguous subset)
+    found_tracks = harmonic_sort(found_tracks)
+    found_tracks = _spread_artists(found_tracks)
+    track_ids = [t["sc_track_id"] for t in found_tracks]
+
+    print("[soundcloud] Final tracklist order:")
+    for i, t in enumerate(found_tracks, 1):
+        key_str = t.get("camelot_key") or t.get("key_camelot") or "?"
+        bpm_str = f"{t['bpm']:.0f}" if t.get("bpm") else "?"
+        print(f"  {i:2}. [{key_str} {bpm_str}] {t['title']} — {t['artist']}")
 
     try:
         sc.create_unique_playlist(playlist_template, track_ids)
@@ -177,6 +208,7 @@ def publish_mix(
     sp=None,
     dry_run: bool = False,
     soundcloud_only: bool = False,
+    sc_target_count: int = 0,
 ) -> dict:
     """
     Full publish flow:
@@ -195,7 +227,7 @@ def publish_mix(
         week = datetime.now(timezone.utc).strftime("%Y-W%V")
         sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
         if Path(sc_token).exists():
-            _publish_soundcloud(config, ranked_tracks, week)
+            _publish_soundcloud(config, ranked_tracks, week, target_count=sc_target_count)
         return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
 
     # Skip YouTube interaction in CI unless explicitly enabled
@@ -221,7 +253,7 @@ def publish_mix(
         print("[publisher] Dry-run mode — YouTube playlist not created.")
         sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
         if Path(sc_token).exists():
-            _publish_soundcloud(config, ranked_tracks, week)
+            _publish_soundcloud(config, ranked_tracks, week, target_count=sc_target_count)
         return {"playlist_id": None, "found": len(found), "total": len(ranked_tracks)}
 
     try:
@@ -281,6 +313,6 @@ def publish_mix(
     # 8. SoundCloud publish (optional)
     sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
     if Path(sc_token).exists():
-        _publish_soundcloud(config, ranked_tracks, week)
+        _publish_soundcloud(config, ranked_tracks, week, target_count=sc_target_count)
 
     return result

@@ -117,32 +117,62 @@ class SoundCloudClient:
         sig = [w for w in words if w not in stop and len(w) > 1]
         return sig[0] if sig else ""
 
+    @staticmethod
+    def _tokenize(s: str) -> set[str]:
+        """Lowercase, strip non-alphanumeric, split into words."""
+        import re
+        return set(re.sub(r"[^a-z0-9 ]", " ", s.lower()).split())
+
+    _TITLE_STOP = frozenset({
+        "the", "a", "an", "feat", "ft", "vs", "remix", "mix",
+        "original", "club", "edit", "extended", "radio", "version",
+    })
+
     def search_track(self, title: str, artist: str = "", delay: float = 0.3) -> Optional[int]:
         """
         Search SoundCloud for a track. Returns the track ID or None.
-        Strategy: strict search (duration ≤10 min + artist keyword match) with
-        fallback to duration-only if no strict match exists.
+
+        A result is accepted only when BOTH conditions hold:
+          1. Artist keyword appears as a whole word in the uploader's username/full_name
+             (substring match is intentionally avoided — "ame" must not match "amepure").
+          2. At least one significant word from the search title appears in the SC track title
+             (prevents accepting a different track by the same artist, e.g. "Labyrinth"
+             when we searched for "Luminous").
         """
         query = f"{artist} {title}".strip() if artist else title
         artist_kw = self._artist_keyword(artist) if artist else ""
         _10_MIN_MS = 10 * 60 * 1000
+
+        # Significant words from the requested title (used for title overlap check)
+        title_sig = self._tokenize(title) - self._TITLE_STOP
+
         try:
             data = self._get("/tracks", q=query, limit=10, **{"duration[to]": _10_MIN_MS})
             tracks = data if isinstance(data, list) else data.get("collection", [])
             playable = [t for t in tracks if t.get("access") == "playable"]
 
             if artist_kw:
-                # Require artist keyword to appear in title/username
                 for t in playable:
-                    haystack = (
-                        (t.get("title") or "") + " " +
+                    # 1. Artist keyword must appear as a substring in the uploader's
+                    #    username/full_name (whole-word was too strict for run-together
+                    #    SC usernames like "janblomavist" or "townshiprebellion")
+                    uploader = self._tokenize(
                         (t.get("user", {}).get("username") or "") + " " +
                         (t.get("user", {}).get("full_name") or "")
-                    ).lower()
-                    if artist_kw in haystack:
-                        return t["id"]
+                    )
+                    uploader_str = " ".join(uploader)
+                    if artist_kw not in uploader_str:
+                        continue
+
+                    # 2. At least one significant title word must appear in the SC title
+                    #    (prevents accepting a different track by the same artist, e.g.
+                    #    "Labyrinth" when we searched for "Luminous")
+                    sc_title_words = self._tokenize(t.get("title") or "")
+                    if title_sig and not (title_sig & sc_title_words):
+                        continue
+
+                    return t["id"]
             else:
-                # No artist to verify — accept first playable result
                 if playable:
                     return playable[0]["id"]
 
@@ -202,10 +232,15 @@ class SoundCloudClient:
         )
         if resp.status_code == 401:
             self._refresh()
-            requests.delete(
+            resp = requests.delete(
                 f"{SOUNDCLOUD_BASE}/playlists/{playlist_id}",
                 headers=self._headers(),
                 timeout=15,
+            )
+        if resp.status_code not in (200, 204, 404):
+            raise requests.HTTPError(
+                f"Delete playlist {playlist_id} failed: {resp.status_code} {resp.text[:200]}",
+                response=resp,
             )
 
     def find_or_create_playlist(self, name: str, track_ids: list[int]) -> int:
