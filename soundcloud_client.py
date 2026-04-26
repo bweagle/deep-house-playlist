@@ -146,10 +146,18 @@ class SoundCloudClient:
         # Significant words from the requested title (used for title overlap check)
         title_sig = self._tokenize(title) - self._TITLE_STOP
 
+        _3_MIN_MS = 3 * 60 * 1000
+
         try:
-            data = self._get("/tracks", q=query, limit=10, **{"duration[to]": _10_MIN_MS})
+            data = self._get("/tracks", q=query, limit=10,
+                             **{"duration[from]": _3_MIN_MS, "duration[to]": _10_MIN_MS})
             tracks = data if isinstance(data, list) else data.get("collection", [])
-            playable = [t for t in tracks if t.get("access") == "playable"]
+            # Also filter client-side — the API duration params are not always reliable
+            playable = [
+                t for t in tracks
+                if t.get("access") == "playable"
+                and _3_MIN_MS <= (t.get("duration") or 0) <= _10_MIN_MS
+            ]
 
             if artist_kw:
                 for t in playable:

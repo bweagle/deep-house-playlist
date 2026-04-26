@@ -229,6 +229,9 @@ def publish_mix(
         sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
         if Path(sc_token).exists():
             _publish_soundcloud(config, ranked_tracks, week, target_count=sc_target_count)
+        # Save to mix history so these tracks are excluded from future runs
+        if not dev:
+            _save_mix(run_id, "soundcloud-only", f"SC {week}", ranked_tracks, db_path)
         return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
 
     # Skip YouTube interaction in CI unless explicitly enabled
