@@ -141,22 +141,73 @@ class YTMusicClient:
     # Search
     # ------------------------------------------------------------------
 
-    def search_track(self, query: str, delay: float = 0.5) -> Optional[str]:
+    @staticmethod
+    def _iso_duration_seconds(iso: str) -> int:
+        """Convert ISO 8601 duration (PT1H28M10S) to total seconds."""
+        import re
+        m = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?", iso or "")
+        if not m:
+            return 0
+        h, mins, s = (int(x or 0) for x in m.groups())
+        return h * 3600 + mins * 60 + s
+
+    def search_track(self, query: str, title: str = "", delay: float = 0.5) -> Optional[str]:
         """
-        Search YouTube for a song and return the best videoId.
+        Search YouTube for a song and return the best matching videoId.
+
+        Fetches up to 5 candidates, then batch-checks their durations via
+        videos.list (1 quota unit). Requires:
+          1. Duration between 3 and 10 minutes
+          2. At least one significant word from `title` in the video title
+             (prevents live sets, DJ mixes, and wrong-track matches)
+
         Raises HttpError so callers can detect quota exhaustion (403/429).
         """
+        import re
+        _3_MIN, _10_MIN = 3 * 60, 10 * 60
+        _STOP = {"the", "a", "an", "feat", "ft", "vs", "remix", "mix",
+                 "original", "club", "edit", "extended", "radio", "version"}
+        title_words = (
+            {w for w in re.sub(r"[^a-z0-9 ]", " ", title.lower()).split()
+             if w not in _STOP and len(w) > 2}
+            if title else set()
+        )
+
         try:
             response = self.youtube.search().list(
                 part="id",
                 q=query,
                 type="video",
                 videoCategoryId="10",  # Music
-                maxResults=1,
+                maxResults=5,
             ).execute()
             items = response.get("items", [])
-            if items:
-                return items[0]["id"]["videoId"]
+            if not items:
+                return None
+
+            video_ids = [item["id"]["videoId"] for item in items]
+
+            # Batch-fetch duration + title (costs 1 quota unit for all 5)
+            details = self.youtube.videos().list(
+                part="contentDetails,snippet",
+                id=",".join(video_ids),
+            ).execute()
+
+            for vid in details.get("items", []):
+                secs = self._iso_duration_seconds(
+                    vid.get("contentDetails", {}).get("duration", "")
+                )
+                if not (_3_MIN <= secs <= _10_MIN):
+                    continue
+
+                if title_words:
+                    yt_title = vid.get("snippet", {}).get("title", "").lower()
+                    yt_words = set(re.sub(r"[^a-z0-9 ]", " ", yt_title).split())
+                    if not (title_words & yt_words):
+                        continue
+
+                return vid["id"]
+
         finally:
             time.sleep(delay)
         return None

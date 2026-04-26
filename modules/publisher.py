@@ -50,7 +50,7 @@ def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> 
 
         query = f"{c['title']} {c['artist']}"
         try:
-            video_id = yt.search_track(query, delay=0.5)
+            video_id = yt.search_track(query, title=c["title"], delay=0.5)
         except HttpError as e:
             status_code = int(e.status_code) if hasattr(e, "status_code") else 0
             if status_code in (401, 403, 429):
