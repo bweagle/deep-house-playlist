@@ -115,7 +115,12 @@ class YTMusicClient:
             kwargs = dict(part="id", playlistId=playlist_id, maxResults=50)
             if page_token:
                 kwargs["pageToken"] = page_token
-            response = self.youtube.playlistItems().list(**kwargs).execute()
+            try:
+                response = self.youtube.playlistItems().list(**kwargs).execute()
+            except HttpError as e:
+                if int(e.status_code) == 404:
+                    return 0  # playlist was just created — nothing to clear
+                raise
             for item in response.get("items", []):
                 for attempt in range(3):
                     try:

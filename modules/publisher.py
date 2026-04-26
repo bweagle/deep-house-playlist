@@ -209,6 +209,7 @@ def publish_mix(
     dry_run: bool = False,
     soundcloud_only: bool = False,
     sc_target_count: int = 0,
+    dev: bool = False,
 ) -> dict:
     """
     Full publish flow:
@@ -289,8 +290,11 @@ def publish_mix(
             yt.add_to_playlist(pinned_id, video_ids)
             print(f"[publisher] '{pinned_name}' updated with this week's {len(video_ids)} tracks")
 
-        # 7. Persist
-        _save_mix(run_id, playlist_id, playlist_name, ranked_tracks, db_path)
+        # 7. Persist (skipped in dev mode so tracks aren't marked as recently played)
+        if not dev:
+            _save_mix(run_id, playlist_id, playlist_name, ranked_tracks, db_path)
+        else:
+            print("[publisher] dev mode — skipping mix history save.")
 
     except YTHttpError as e:
         code = int(e.status_code) if hasattr(e, "status_code") else 0

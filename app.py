@@ -173,7 +173,7 @@ def cmd_publish(args: argparse.Namespace) -> None:
 def cmd_generate_weekly(args: argparse.Namespace) -> None:
     from modules.scheduler import run_weekly
     config = _load_config(args.config)
-    run_weekly(config, dry_run=args.dry_run, verbose=True)
+    run_weekly(config, dry_run=args.dry_run, dev=getattr(args, "dev", False), verbose=True)
 
 
 # ---------------------------------------------------------------------------
