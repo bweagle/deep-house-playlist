@@ -387,15 +387,17 @@ def rank_and_filter(
     if not candidates:
         return []
 
-    # Hard-exclude tracks over 10 minutes (duration_ms from Beatport)
+    # Hard-exclude tracks outside duration range (3–10 minutes)
+    _3_MIN_MS = 3 * 60 * 1000
     _10_MIN_MS = 10 * 60 * 1000
     before = len(candidates)
     candidates = [
         c for c in candidates
-        if not c.get("duration_ms") or c["duration_ms"] <= _10_MIN_MS
+        if not c.get("duration_ms")
+        or (_3_MIN_MS <= c["duration_ms"] <= _10_MIN_MS)
     ]
     if len(candidates) < before:
-        print(f"[ranker] Excluded {before - len(candidates)} tracks over 10 minutes")
+        print(f"[ranker] Excluded {before - len(candidates)} tracks outside 3–10 min duration range")
 
     # Hard-exclude tracks with no BPM (couldn't be matched on Beatport)
     before = len(candidates)

@@ -209,6 +209,22 @@ class BeatportClient:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _parse_length_ms(length: object) -> int | None:
+        """Convert Beatport length to milliseconds.
+        Accepts 'M:SS' / 'MM:SS' strings or a raw integer millisecond value."""
+        if not length:
+            return None
+        if isinstance(length, int):
+            return length
+        try:
+            parts = str(length).strip().split(":")
+            if len(parts) == 2:
+                return (int(parts[0]) * 60 + int(parts[1])) * 1000
+        except (ValueError, AttributeError):
+            pass
+        return None
+
+    @staticmethod
     def parse_track(raw: dict) -> dict:
         """
         Normalise a raw Beatport track object to the flat dict used by the pipeline.
@@ -241,7 +257,7 @@ class BeatportClient:
             "sub_genre": (sub_genre_obj.get("name") or "") if sub_genre_obj else "",
             "label": label_obj.get("name", ""),
             "release_date": raw.get("publish_date") or raw.get("release_date"),
-            "duration": raw.get("length_ms"),
+            "duration": BeatportClient._parse_length_ms(raw.get("length") or raw.get("length_ms")),
         }
 
     # ------------------------------------------------------------------
