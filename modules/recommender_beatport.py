@@ -107,6 +107,7 @@ def get_beatport_recommendations(
             "sub_genre": track.get("sub_genre", ""),
             "label": track.get("label", ""),
             "release_date": track.get("release_date"),
+            "duration_ms": track.get("duration_ms"),
             "reason": reason,
         })
         return True

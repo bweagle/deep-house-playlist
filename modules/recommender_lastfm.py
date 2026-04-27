@@ -73,6 +73,7 @@ def _enrich_with_beatport(candidates: list[dict], bp) -> None:
             c["sub_genre"] = track.get("sub_genre", "")
             c["label"] = track.get("label", "")
             c["release_date"] = track.get("release_date")
+            c["duration_ms"] = track.get("duration_ms")
             enriched += 1
     if enriched:
         print(f"  [lastfm] Enriched {enriched}/{len(candidates)} candidates with Beatport metadata")

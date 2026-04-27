@@ -230,6 +230,7 @@ def _via_beatport(
                 "sub_genre": track.get("sub_genre", ""),
                 "label": track.get("label", ""),
                 "release_date": track.get("release_date"),
+                "duration_ms": track.get("duration_ms"),
                 "reason": f"[LLM→BP] {reason}",
             })
             if len(candidates) >= count:
