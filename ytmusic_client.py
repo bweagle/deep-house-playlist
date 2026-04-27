@@ -155,7 +155,10 @@ class YTMusicClient:
     def _artist_keyword(artist: str) -> str:
         """First significant word of the primary artist name (before any comma)."""
         import re
+        import unicodedata
         primary = artist.split(",")[0].strip()
+        # Normalize accented chars to ASCII base (e.g. Âme → Ame, not me)
+        primary = unicodedata.normalize("NFKD", primary).encode("ascii", "ignore").decode("ascii")
         words = re.sub(r"[^a-z0-9 ]", "", primary.lower()).split()
         stop = {"the", "a", "an", "dj", "mc", "and", "feat", "ft", "vs", "b2b"}
         sig = [w for w in words if w not in stop and len(w) > 1]

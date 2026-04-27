@@ -90,7 +90,12 @@ def get_beatport_recommendations(
     candidates: list[dict] = []
 
     def _add(track: dict, reason: str) -> bool:
-        key = (track["title"].lower(), track["artist"].lower())
+        artist = track.get("artist", "").strip()
+        label = track.get("label", "").strip()
+        # Skip tracks where Beatport returned no artist or used the label as the artist
+        if not artist or (label and artist.lower() == label.lower()):
+            return False
+        key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:
             return False
         seen.add(key)
