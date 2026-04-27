@@ -257,7 +257,7 @@ class BeatportClient:
             "sub_genre": (sub_genre_obj.get("name") or "") if sub_genre_obj else "",
             "label": label_obj.get("name", ""),
             "release_date": raw.get("publish_date") or raw.get("release_date"),
-            "duration": BeatportClient._parse_length_ms(raw.get("length") or raw.get("length_ms")),
+            "duration_ms": BeatportClient._parse_length_ms(raw.get("length") or raw.get("length_ms")),
         }
 
     # ------------------------------------------------------------------

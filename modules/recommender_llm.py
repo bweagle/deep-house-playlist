@@ -351,7 +351,7 @@ def _save_candidates(candidates: list[dict], db_path: str) -> None:
                 c.get("bpm"), c.get("camelot_key"),
                 c.get("genre"), c.get("sub_genre"),
                 c.get("label"), c.get("release_date"),
-                c.get("reason"), c.get("duration"), now,
+                c.get("reason"), c.get("duration_ms"), now,
             ),
         )
     conn.commit()
