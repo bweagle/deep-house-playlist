@@ -251,6 +251,10 @@ def publish_mix(
     found = [t for t in ranked_tracks if t.get("youtube_video_id")]
     print(f"[publisher] {len(found)}/{len(ranked_tracks)} tracks found on YouTube")
 
+    if not found:
+        print("[publisher] No tracks found — skipping playlist creation.")
+        return {"playlist_id": None, "found": 0, "total": len(ranked_tracks)}
+
     week = datetime.now(timezone.utc).strftime("%Y-W%V")
 
     if dry_run:
