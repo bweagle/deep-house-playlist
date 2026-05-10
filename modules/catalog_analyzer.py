@@ -64,7 +64,12 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
 
     conn = get_connection(db_path)
     rows = conn.execute(
-        "SELECT id, title, artist FROM catalog WHERE beatport_id IS NULL"
+        """
+        SELECT id, title, artist FROM catalog
+        WHERE beatport_id IS NULL
+          AND (beatport_searched_at IS NULL
+               OR beatport_searched_at < datetime('now', '-30 days'))
+        """
     ).fetchall()
 
     matched = skipped = 0
@@ -104,7 +109,8 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
                             sub_genre = ?,
                             label = ?,
                             release_date = ?,
-                            fetched_at = ?
+                            fetched_at = ?,
+                            beatport_searched_at = ?
                         WHERE id = ?
                         """,
                         (
@@ -117,14 +123,24 @@ def match_catalog_to_beatport(bp: BeatportClient, db_path: str) -> tuple[int, in
                             track.get("label"),
                             track.get("release_date"),
                             now,
+                            now,
                             row["id"],
                         ),
                     )
                     matched += 1
                 except sqlite3.IntegrityError:
                     # Two catalog tracks matched the same Beatport ID — skip this one
+                    conn.execute(
+                        "UPDATE catalog SET beatport_searched_at = ? WHERE id = ?",
+                        (now, row["id"]),
+                    )
                     skipped += 1
             else:
+                # Not found — stamp so we don't retry for 30 days
+                conn.execute(
+                    "UPDATE catalog SET beatport_searched_at = ? WHERE id = ?",
+                    (now, row["id"]),
+                )
                 skipped += 1
     finally:
         conn.commit()

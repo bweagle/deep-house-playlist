@@ -125,4 +125,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     existing = {r[1] for r in conn.execute("PRAGMA table_info(recommendations)").fetchall()}
     if "duration_ms" not in existing:
         conn.execute("ALTER TABLE recommendations ADD COLUMN duration_ms INTEGER")
-        conn.commit()
+
+    catalog_cols = {r[1] for r in conn.execute("PRAGMA table_info(catalog)").fetchall()}
+    if "beatport_searched_at" not in catalog_cols:
+        conn.execute("ALTER TABLE catalog ADD COLUMN beatport_searched_at TEXT")
+
+    conn.commit()
