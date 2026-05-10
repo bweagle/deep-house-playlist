@@ -3,12 +3,11 @@
 Weekly Deep House Mix — CLI entry point.
 
 Commands:
-  analyze          Load CSV, match to Spotify, compute taste profile
+  analyze          Load CSV, match Beatport, resolve YouTube IDs, compute taste profile
   recommend        Run all recommendation sources and save candidates
   rank             Score/rank saved candidates and print the tracklist
   publish          Create the YouTube playlist from ranked candidates
   generate-weekly  Full pipeline: recommend → rank → publish
-  library-sync     Resolve YouTube video IDs for catalog songs and cache them
   mixtape          Build a playlist from your own catalog, ordered harmonically
 """
 
@@ -172,19 +171,6 @@ def cmd_publish(args: argparse.Namespace) -> None:
         print(result)
 
 
-def cmd_library_sync(args: argparse.Namespace) -> None:
-    from modules.db import init_db
-    from modules.library_sync import sync_youtube
-
-    config = _load_config(args.config)
-    db_path = config["pipeline"]["database"]
-    auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
-
-    init_db(db_path)
-    print(f"\n=== Library Sync ===\n")
-    sync_youtube(db_path, auth_file=auth_file, re_search_days=args.re_search_days)
-
-
 def cmd_mixtape(args: argparse.Namespace) -> None:
     from modules.mixtape import build_mixtape
     from modules.publisher import _youtube_search
@@ -300,11 +286,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--dev", action="store_true",
                        help="Skip recent-exclusion filter")
 
-    # library-sync
-    p_lib = sub.add_parser("library-sync", help="Resolve YouTube video IDs for catalog songs and cache them")
-    p_lib.add_argument("--re-search-days", dest="re_search_days", type=int, default=90,
-                       help="Re-search songs whose cache is older than N days (default: 90)")
-
     return parser
 
 
@@ -318,7 +299,6 @@ def main() -> None:
         "rank": cmd_rank,
         "publish": cmd_publish,
         "generate-weekly": cmd_generate_weekly,
-        "library-sync": cmd_library_sync,
         "mixtape": cmd_mixtape,
     }
     dispatch[args.command](args)

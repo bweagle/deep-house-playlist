@@ -289,7 +289,8 @@ def run_analyze(config: dict, verbose: bool = True, limit: int | None = None) ->
     Full analyze pipeline:
       1. Load CSV into DB
       2. Match to Beatport (if token available)
-      3. Compute taste profile
+      3. Resolve YouTube video IDs (if OAuth file available)
+      4. Compute taste profile
     """
     db_path = config["pipeline"]["database"]
     csv_path = config["pipeline"]["catalog_csv"]
@@ -324,7 +325,22 @@ def run_analyze(config: dict, verbose: bool = True, limit: int | None = None) ->
         if verbose:
             print("No Beatport token — using CSV data only for taste profile.")
 
-    # 3. Taste profile
+    # 3. Resolve YouTube video IDs (optional — skip if no OAuth file)
+    auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
+    if Path(auth_file).exists():
+        try:
+            from modules.library_sync import sync_youtube
+            if verbose:
+                print()
+            sync_youtube(db_path, auth_file=auth_file, verbose=verbose)
+        except Exception as e:
+            if verbose:
+                print(f"YouTube sync failed: {e} — skipping.")
+    else:
+        if verbose:
+            print("No YouTube OAuth file — skipping YouTube ID resolution.")
+
+    # 4. Taste profile
     profile = compute_taste_profile(db_path, min_rating=min_rating)
     if verbose:
         print(f"\nTaste profile (from songs rated {min_rating}+):")
