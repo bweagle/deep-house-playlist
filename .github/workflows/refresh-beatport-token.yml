@@ -1,0 +1,49 @@
+name: Refresh Beatport Token
+
+on:
+  schedule:
+    # Wednesday and Friday at 08:00 UTC — keeps the refresh token alive before Sunday's run
+    - cron: "0 8 * * 3"
+    - cron: "0 8 * * 5"
+  workflow_dispatch:
+
+jobs:
+  refresh-token:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Restore Beatport token cache
+        id: beatport-cache
+        uses: actions/cache@v4
+        with:
+          path: beatport_token.json
+          key: beatport-token-${{ github.run_id }}
+          restore-keys: beatport-token-
+
+      - name: Write Beatport token from secret (cache miss only)
+        if: steps.beatport-cache.outputs.cache-hit != 'true'
+        run: echo '${{ secrets.BEATPORT_TOKEN_JSON }}' > beatport_token.json
+
+      - name: Force-refresh token and save
+        run: |
+          python3 - <<'EOF'
+          from modules.beatport_client import BeatportClient
+
+          bp = BeatportClient("beatport_token.json")
+          bp._token["expires_at"] = 0   # force refresh regardless of current expiry
+          bp._refresh_if_needed()       # fetches new access + refresh token, saves to disk
+          print("Beatport token refreshed and saved.")
+          EOF
