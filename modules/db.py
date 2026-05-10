@@ -129,5 +129,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
     catalog_cols = {r[1] for r in conn.execute("PRAGMA table_info(catalog)").fetchall()}
     if "beatport_searched_at" not in catalog_cols:
         conn.execute("ALTER TABLE catalog ADD COLUMN beatport_searched_at TEXT")
+    if "youtube_video_id" not in catalog_cols:
+        conn.execute("ALTER TABLE catalog ADD COLUMN youtube_video_id TEXT")
+    if "youtube_searched_at" not in catalog_cols:
+        conn.execute("ALTER TABLE catalog ADD COLUMN youtube_searched_at TEXT")
 
     conn.commit()
