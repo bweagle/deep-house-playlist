@@ -8,6 +8,7 @@ Commands:
   rank             Score/rank saved candidates and print the tracklist
   publish          Create the YouTube playlist from ranked candidates
   generate-weekly  Full pipeline: recommend → rank → publish
+  mixtape          Build a playlist from your own catalog, ordered harmonically
 """
 
 import argparse
@@ -170,6 +171,59 @@ def cmd_publish(args: argparse.Namespace) -> None:
         print(result)
 
 
+def cmd_mixtape(args: argparse.Namespace) -> None:
+    from modules.mixtape import build_mixtape
+    from modules.publisher import _youtube_search
+    from ytmusic_client import YTMusicClient
+
+    config = _load_config(args.config)
+    db_path = config["pipeline"]["database"]
+    auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
+    playlist_name = args.name
+
+    print(f"\n=== Mixtape: '{playlist_name}' ===\n")
+
+    print(f"[mixtape] Selecting {args.count} tracks from catalog…")
+    tracks = build_mixtape(db_path, count=args.count, max_per_artist=args.max_per_artist)
+
+    if not tracks:
+        sys.exit("[mixtape] No tracks found. Run `analyze` first to populate the catalog.")
+
+    print(f"[mixtape] Selected {len(tracks)} tracks:")
+    for t in tracks:
+        key_str = t.get("camelot_key") or "?"
+        bpm_str = f"{t['bpm']:.0f}" if t.get("bpm") else "?"
+        print(f"  {t['rank']:3}. [{key_str} {bpm_str}] {t['title']} — {t['artist']}  (rating={t.get('rating', '?')})")
+
+    if args.dry_run:
+        print("\n[mixtape] Dry run — stopping before YouTube search.")
+        return
+
+    print(f"\n[mixtape] Searching YouTube for {len(tracks)} tracks…")
+    yt = YTMusicClient(auth_file=auth_file)
+    _youtube_search(yt, tracks, db_path)
+
+    found = [t for t in tracks if t.get("youtube_video_id")]
+    print(f"[mixtape] {len(found)}/{len(tracks)} tracks found on YouTube")
+
+    if not found:
+        sys.exit("[mixtape] No tracks found on YouTube — playlist not created.")
+
+    print(f"[mixtape] Creating playlist '{playlist_name}'…")
+    playlist_id = yt.find_or_create_playlist(
+        name=playlist_name,
+        description=f"Personal deep house mixtape — {len(found)} tracks ordered harmonically.",
+    )
+    # Clear existing tracks so re-running updates in place
+    removed = yt.clear_playlist(playlist_id)
+    if removed:
+        print(f"[mixtape] Cleared {removed} old tracks from '{playlist_name}'")
+
+    video_ids = [t["youtube_video_id"] for t in found]
+    added = yt.add_to_playlist(playlist_id, video_ids)
+    print(f"[mixtape] Done — {added} tracks added to '{playlist_name}'")
+
+
 def cmd_generate_weekly(args: argparse.Namespace) -> None:
     from modules.scheduler import run_weekly
     config = _load_config(args.config)
@@ -220,6 +274,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_pub.add_argument("--dev", action="store_true",
                        help="Skip recent-exclusion filter")
 
+    # mixtape
+    p_mix = sub.add_parser("mixtape", help="Build a playlist from your own catalog, ordered harmonically")
+    p_mix.add_argument("--name", default="Deephouse Mixtape",
+                       help="YouTube playlist name (default: 'Deephouse Mixtape')")
+    p_mix.add_argument("--count", type=int, default=100,
+                       help="Number of tracks (default: 100)")
+    p_mix.add_argument("--max-per-artist", dest="max_per_artist", type=int, default=3,
+                       help="Max tracks per artist (default: 3)")
+    p_mix.add_argument("--dry-run", action="store_true",
+                       help="Print tracklist without creating the playlist")
+
     # generate-weekly
     p_gen = sub.add_parser("generate-weekly", help="Full pipeline: recommend → rank → publish")
     p_gen.add_argument("--dry-run", action="store_true",
@@ -240,6 +305,7 @@ def main() -> None:
         "rank": cmd_rank,
         "publish": cmd_publish,
         "generate-weekly": cmd_generate_weekly,
+        "mixtape": cmd_mixtape,
     }
     dispatch[args.command](args)
 
