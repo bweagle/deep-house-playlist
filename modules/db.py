@@ -134,4 +134,15 @@ def _migrate(conn: sqlite3.Connection) -> None:
     if "youtube_searched_at" not in catalog_cols:
         conn.execute("ALTER TABLE catalog ADD COLUMN youtube_searched_at TEXT")
 
+    # Deduplicate catalog rows (can accumulate if analyze is run multiple times)
+    # Keep the first (lowest id) row per title+artist, then enforce uniqueness.
+    indexes = {r[1] for r in conn.execute("PRAGMA index_list(catalog)").fetchall()}
+    if "catalog_title_artist" not in indexes:
+        conn.execute("""
+            DELETE FROM catalog WHERE id NOT IN (
+                SELECT MIN(id) FROM catalog GROUP BY title, artist
+            )
+        """)
+        conn.execute("CREATE UNIQUE INDEX catalog_title_artist ON catalog(title, artist)")
+
     conn.commit()

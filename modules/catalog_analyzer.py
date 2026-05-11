@@ -35,7 +35,7 @@ def load_catalog_to_db(songs: list[Song], db_path: str) -> int:
             """
             INSERT INTO catalog (title, artist, bpm, key_camelot, duration, rating, notes, local)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT DO NOTHING
+            ON CONFLICT(title, artist) DO NOTHING
             """,
             (
                 song.title,
