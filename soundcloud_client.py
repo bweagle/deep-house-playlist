@@ -135,57 +135,73 @@ class SoundCloudClient:
         """
         Search SoundCloud for a track. Returns the track ID or None.
 
-        A result is accepted only when BOTH conditions hold:
-          1. Artist keyword appears as a whole word in the uploader's username/full_name
-             (substring match is intentionally avoided — "ame" must not match "amepure").
-          2. At least one significant word from the search title appears in the SC track title
-             (prevents accepting a different track by the same artist, e.g. "Labyrinth"
-             when we searched for "Luminous").
-        """
-        query = f"{artist} {title}".strip() if artist else title
-        artist_kw = self._artist_keyword(artist) if artist else ""
-        _10_MIN_MS = 10 * 60 * 1000
+        A result is accepted when BOTH conditions hold:
+          1. Artist keyword appears in the uploader's username/full_name OR in the
+             track title (many tracks are uploaded by labels like Dirtybird, not the
+             artist directly, but the artist name is in the track title).
+          2. At least one significant word from the search title appears in the SC title.
 
-        # Significant words from the requested title (used for title overlap check)
+        Access filter accepts both "playable" and "preview" (SoundCloud Go tracks
+        exist and are linkable even if full playback requires a subscription).
+        """
+        import unicodedata as _ud
+        import re as _re
+
+        def _normalize_query(s: str) -> str:
+            # Replace typographic dashes/special chars with ASCII equivalents
+            s = _ud.normalize("NFKD", s).encode("ascii", "ignore").decode("ascii")
+            return _re.sub(r"[–—−]", "-", s)
+
+        query = _normalize_query(f"{artist} {title}".strip() if artist else title)
+        artist_kw = self._artist_keyword(artist) if artist else ""
         title_sig = self._tokenize(title) - self._TITLE_STOP
 
-        _3_MIN_MS = 3 * 60 * 1000
+        _2_MIN_MS = 2 * 60 * 1000
+        _10_MIN_MS = 10 * 60 * 1000
 
         try:
-            data = self._get("/tracks", q=query, limit=10,
-                             **{"duration[from]": _3_MIN_MS, "duration[to]": _10_MIN_MS})
+            # Omit API duration params — they are unreliable and drop valid results.
+            # Filter client-side instead.
+            data = self._get("/tracks", q=query, limit=10)
             tracks = data if isinstance(data, list) else data.get("collection", [])
-            # Also filter client-side — the API duration params are not always reliable
-            playable = [
+            # Accept playable and preview (preview = SoundCloud Go track, still linkable).
+            # Minimum 2 min to catch edits/radio versions; max 10 min to exclude DJ sets.
+            candidates = [
                 t for t in tracks
-                if t.get("access") == "playable"
-                and _3_MIN_MS <= (t.get("duration") or 0) <= _10_MIN_MS
+                if t.get("access") in ("playable", "preview")
+                and _2_MIN_MS <= (t.get("duration") or 0) <= _10_MIN_MS
             ]
 
             if artist_kw:
-                for t in playable:
-                    # 1. Artist keyword must appear as a substring in the uploader's
-                    #    username/full_name (whole-word was too strict for run-together
-                    #    SC usernames like "janblomavist" or "townshiprebellion")
-                    uploader = self._tokenize(
+                best_title_only = None
+                for t in candidates:
+                    # 1. Artist keyword in uploader name OR track title
+                    uploader_str = " ".join(self._tokenize(
                         (t.get("user", {}).get("username") or "") + " " +
                         (t.get("user", {}).get("full_name") or "")
-                    )
-                    uploader_str = " ".join(uploader)
-                    if artist_kw not in uploader_str:
-                        continue
-
-                    # 2. At least one significant title word must appear in the SC title
-                    #    (prevents accepting a different track by the same artist, e.g.
-                    #    "Labyrinth" when we searched for "Luminous")
+                    ))
                     sc_title_words = self._tokenize(t.get("title") or "")
-                    if title_sig and not (title_sig & sc_title_words):
-                        continue
+                    artist_in_uploader = artist_kw in uploader_str
+                    artist_in_title = artist_kw in " ".join(sc_title_words)
 
-                    return t["id"]
+                    # 2. Title word overlap
+                    title_overlap = title_sig & sc_title_words if title_sig else set()
+
+                    if artist_in_uploader or artist_in_title:
+                        if title_sig and not title_overlap:
+                            continue
+                        return t["id"]
+
+                    # Fallback: strong title match (2+ words) even without artist confirmation
+                    # Catches tracks uploaded by labels that omit the artist from the title
+                    if len(title_overlap) >= 2 and best_title_only is None:
+                        best_title_only = t["id"]
+
+                if best_title_only is not None:
+                    return best_title_only
             else:
-                if playable:
-                    return playable[0]["id"]
+                if candidates:
+                    return candidates[0]["id"]
 
         except requests.HTTPError:
             raise
