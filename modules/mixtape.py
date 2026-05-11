@@ -26,23 +26,33 @@ def build_mixtape(
     db_path: str,
     count: int = 100,
     max_per_artist: int = 3,
-    youtube_only: bool = True,
+    platform: str = "youtube",
 ) -> list[dict]:
     """
     Select `count` songs from the catalog ordered for a DJ set.
 
-    1. Score every catalog track by rating (prefers songs known to be on YouTube).
+    1. Score every catalog track by rating.
     2. Apply a per-artist cap so no artist dominates.
     3. Harmonically sort using the Camelot wheel.
     4. Spread artists so no two adjacent tracks share the same artist.
 
-    When `youtube_only=True` (default), only songs with a cached youtube_video_id
-    are included — no live API calls needed.
+    `platform` controls which cached IDs are required:
+      "youtube"    — only songs with youtube_video_id
+      "soundcloud" — only songs with soundcloud_track_id
     """
     conn = get_connection(db_path)
-    query = "SELECT title, artist, bpm, key_camelot, rating, genre, label, youtube_video_id FROM catalog"
-    if youtube_only:
-        query += " WHERE youtube_video_id IS NOT NULL"
+    if platform == "soundcloud":
+        query = (
+            "SELECT title, artist, bpm, key_camelot, rating, genre, label, "
+            "youtube_video_id, soundcloud_track_id FROM catalog "
+            "WHERE soundcloud_track_id IS NOT NULL"
+        )
+    else:
+        query = (
+            "SELECT title, artist, bpm, key_camelot, rating, genre, label, "
+            "youtube_video_id, soundcloud_track_id FROM catalog "
+            "WHERE youtube_video_id IS NOT NULL"
+        )
     rows = conn.execute(query).fetchall()
     conn.close()
 
@@ -56,6 +66,7 @@ def build_mixtape(
             "genre": r["genre"] or "",
             "label": r["label"] or "",
             "youtube_video_id": r["youtube_video_id"],
+            "soundcloud_track_id": r["soundcloud_track_id"],
             "score": _rating_score(r["rating"]),
         }
         for r in rows

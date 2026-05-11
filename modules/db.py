@@ -133,6 +133,10 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE catalog ADD COLUMN youtube_video_id TEXT")
     if "youtube_searched_at" not in catalog_cols:
         conn.execute("ALTER TABLE catalog ADD COLUMN youtube_searched_at TEXT")
+    if "soundcloud_track_id" not in catalog_cols:
+        conn.execute("ALTER TABLE catalog ADD COLUMN soundcloud_track_id INTEGER")
+    if "soundcloud_searched_at" not in catalog_cols:
+        conn.execute("ALTER TABLE catalog ADD COLUMN soundcloud_searched_at TEXT")
 
     # Deduplicate catalog rows (can accumulate if analyze is run multiple times)
     # Keep the first (lowest id) row per title+artist, then enforce uniqueness.

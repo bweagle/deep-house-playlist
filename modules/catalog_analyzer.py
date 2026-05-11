@@ -325,24 +325,39 @@ def run_analyze(config: dict, verbose: bool = True, limit: int | None = None) ->
         if verbose:
             print("No Beatport token — using CSV data only for taste profile.")
 
-    # 3. Resolve YouTube video IDs — skip in CI (only needed for mixtape, run locally)
+    # 3. Resolve YouTube + SoundCloud IDs — skip in CI (only needed for mixtape, run locally)
     import os
-    auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
     if os.environ.get("CI"):
         if verbose:
-            print("CI environment — skipping YouTube ID resolution (run `analyze` locally for mixtape).")
-    elif Path(auth_file).exists():
-        try:
-            from modules.library_sync import sync_youtube
-            if verbose:
-                print()
-            sync_youtube(db_path, auth_file=auth_file, verbose=verbose)
-        except Exception as e:
-            if verbose:
-                print(f"YouTube sync failed: {e} — skipping.")
+            print("CI environment — skipping library sync (run `analyze` locally for mixtape).")
     else:
-        if verbose:
-            print("No YouTube OAuth file — skipping YouTube ID resolution.")
+        from modules.library_sync import sync_youtube, sync_soundcloud
+
+        auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
+        if Path(auth_file).exists():
+            try:
+                if verbose:
+                    print()
+                sync_youtube(db_path, auth_file=auth_file, verbose=verbose)
+            except Exception as e:
+                if verbose:
+                    print(f"YouTube sync failed: {e} — skipping.")
+        else:
+            if verbose:
+                print("No YouTube OAuth file — skipping YouTube ID resolution.")
+
+        sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+        if Path(sc_token).exists():
+            try:
+                if verbose:
+                    print()
+                sync_soundcloud(db_path, token_file=sc_token, verbose=verbose)
+            except Exception as e:
+                if verbose:
+                    print(f"SoundCloud sync failed: {e} — skipping.")
+        else:
+            if verbose:
+                print("No SoundCloud token — skipping SoundCloud ID resolution.")
 
     # 4. Taste profile
     profile = compute_taste_profile(db_path, min_rating=min_rating)

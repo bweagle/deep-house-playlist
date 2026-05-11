@@ -8,7 +8,7 @@ Commands:
   rank             Score/rank saved candidates and print the tracklist
   publish          Create the YouTube playlist from ranked candidates
   generate-weekly  Full pipeline: recommend → rank → publish
-  mixtape          Build a playlist from your own catalog, ordered harmonically
+  mixtape          Build a playlist from your catalog (YouTube or SoundCloud)
 """
 
 import argparse
@@ -173,23 +173,23 @@ def cmd_publish(args: argparse.Namespace) -> None:
 
 def cmd_mixtape(args: argparse.Namespace) -> None:
     from modules.mixtape import build_mixtape
-    from modules.publisher import _youtube_search
-    from ytmusic_client import YTMusicClient
 
     config = _load_config(args.config)
     db_path = config["pipeline"]["database"]
-    auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
     playlist_name = args.name
+    soundcloud = getattr(args, "soundcloud", False)
+    platform = "soundcloud" if soundcloud else "youtube"
 
-    print(f"\n=== Mixtape: '{playlist_name}' ===\n")
+    print(f"\n=== Mixtape: '{playlist_name}' ({platform}) ===\n")
 
-    print(f"[mixtape] Selecting {args.count} tracks from catalog (YouTube-cached songs only)…")
-    tracks = build_mixtape(db_path, count=args.count, max_per_artist=args.max_per_artist)
+    print(f"[mixtape] Selecting {args.count} tracks from catalog ({platform}-cached songs only)…")
+    tracks = build_mixtape(db_path, count=args.count, max_per_artist=args.max_per_artist,
+                           platform=platform)
 
     if not tracks:
         sys.exit(
-            "[mixtape] No YouTube-resolved songs in catalog.\n"
-            "Run `python3 app.py library-sync` first to search YouTube for your catalog."
+            f"[mixtape] No {platform}-resolved songs in catalog.\n"
+            "Run `python3 app.py analyze` to search for your catalog songs."
         )
 
     print(f"[mixtape] Selected {len(tracks)} tracks:")
@@ -202,20 +202,32 @@ def cmd_mixtape(args: argparse.Namespace) -> None:
         print("\n[mixtape] Dry run — stopping before playlist creation.")
         return
 
-    yt = YTMusicClient(auth_file=auth_file)
+    if soundcloud:
+        from soundcloud_client import SoundCloudClient
+        sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
+        sc = SoundCloudClient(token_file=sc_token)
+        track_ids = [t["soundcloud_track_id"] for t in tracks]
 
-    print(f"\n[mixtape] Creating playlist '{playlist_name}'…")
-    playlist_id = yt.find_or_create_playlist(
-        name=playlist_name,
-        description=f"Personal deep house mixtape — {len(tracks)} tracks ordered harmonically.",
-    )
-    removed = yt.clear_playlist(playlist_id)
-    if removed:
-        print(f"[mixtape] Cleared {removed} old tracks from '{playlist_name}'")
+        print(f"\n[mixtape] Creating SoundCloud playlist '{playlist_name}'…")
+        playlist_id = sc.find_or_create_playlist(playlist_name, track_ids)
+        print(f"[mixtape] Done — {len(track_ids)} tracks added to '{playlist_name}' (SC id: {playlist_id})")
+    else:
+        from ytmusic_client import YTMusicClient
+        auth_file = config.get("youtube", {}).get("oauth_file", "oauth.json")
+        yt = YTMusicClient(auth_file=auth_file)
 
-    video_ids = [t["youtube_video_id"] for t in tracks]
-    added = yt.add_to_playlist(playlist_id, video_ids)
-    print(f"[mixtape] Done — {added}/{len(tracks)} tracks added to '{playlist_name}'")
+        print(f"\n[mixtape] Creating YouTube playlist '{playlist_name}'…")
+        playlist_id = yt.find_or_create_playlist(
+            name=playlist_name,
+            description=f"Personal deep house mixtape — {len(tracks)} tracks ordered harmonically.",
+        )
+        removed = yt.clear_playlist(playlist_id)
+        if removed:
+            print(f"[mixtape] Cleared {removed} old tracks from '{playlist_name}'")
+
+        video_ids = [t["youtube_video_id"] for t in tracks]
+        added = yt.add_to_playlist(playlist_id, video_ids)
+        print(f"[mixtape] Done — {added}/{len(tracks)} tracks added to '{playlist_name}'")
 
 
 def cmd_generate_weekly(args: argparse.Namespace) -> None:
@@ -271,11 +283,13 @@ def build_parser() -> argparse.ArgumentParser:
     # mixtape
     p_mix = sub.add_parser("mixtape", help="Build a playlist from your own catalog, ordered harmonically")
     p_mix.add_argument("--name", default="Deephouse Mixtape",
-                       help="YouTube playlist name (default: 'Deephouse Mixtape')")
+                       help="Playlist name (default: 'Deephouse Mixtape')")
     p_mix.add_argument("--count", type=int, default=100,
                        help="Number of tracks (default: 100)")
     p_mix.add_argument("--max-per-artist", dest="max_per_artist", type=int, default=3,
                        help="Max tracks per artist (default: 3)")
+    p_mix.add_argument("--soundcloud", action="store_true",
+                       help="Publish to SoundCloud instead of YouTube Music")
     p_mix.add_argument("--dry-run", action="store_true",
                        help="Print tracklist without creating the playlist")
 
