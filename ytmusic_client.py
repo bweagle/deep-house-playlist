@@ -110,31 +110,34 @@ class YTMusicClient:
     def clear_playlist(self, playlist_id: str) -> int:
         """Remove all items from a playlist. Returns number of items removed."""
         removed = 0
-        page_token = None
         while True:
-            kwargs = dict(part="id", playlistId=playlist_id, maxResults=50)
-            if page_token:
-                kwargs["pageToken"] = page_token
+            # Always fetch from the beginning — deleting shifts items so nextPageToken
+            # would skip anything that moved into the already-fetched range.
             try:
-                response = self.youtube.playlistItems().list(**kwargs).execute()
+                response = self.youtube.playlistItems().list(
+                    part="id", playlistId=playlist_id, maxResults=50
+                ).execute()
             except HttpError as e:
                 if int(e.status_code) == 404:
                     return 0  # playlist was just created — nothing to clear
                 raise
-            for item in response.get("items", []):
+            items = response.get("items", [])
+            if not items:
+                break
+            for item in items:
                 for attempt in range(3):
                     try:
                         self.youtube.playlistItems().delete(id=item["id"]).execute()
                         break
                     except HttpError as e:
-                        if int(e.status_code) == 409 and attempt < 2:
+                        status = int(e.status_code)
+                        if status == 404:
+                            break  # already gone — that's fine
+                        if status == 409 and attempt < 2:
                             time.sleep(2 ** attempt)
                         else:
                             raise
                 removed += 1
-            page_token = response.get("nextPageToken")
-            if not page_token:
-                break
         return removed
 
     # ------------------------------------------------------------------
