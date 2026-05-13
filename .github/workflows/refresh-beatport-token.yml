@@ -2,9 +2,14 @@ name: Refresh Beatport Token
 
 on:
   schedule:
-    # Wednesday and Friday at 08:00 UTC — keeps the refresh token alive before Sunday's run
+    # Daily Mon–Sat at 08:00 UTC — Beatport refresh tokens expire ~72h so we must
+    # refresh more frequently than that. Sunday is covered by the weekly-mix run itself.
+    - cron: "0 8 * * 1"
+    - cron: "0 8 * * 2"
     - cron: "0 8 * * 3"
+    - cron: "0 8 * * 4"
     - cron: "0 8 * * 5"
+    - cron: "0 8 * * 6"
   workflow_dispatch:
 
 jobs:
@@ -47,3 +52,12 @@ jobs:
           bp._refresh_if_needed()       # fetches new access + refresh token, saves to disk
           print("Beatport token refreshed and saved.")
           EOF
+
+      - name: Update BEATPORT_TOKEN_JSON secret with refreshed token
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh secret set BEATPORT_TOKEN_JSON \
+            --repo bweagle/deep-house-playlist \
+            --body "$(cat beatport_token.json)"
+          echo "Secret updated."
