@@ -156,9 +156,8 @@ class BeatportClient:
     # ------------------------------------------------------------------
 
     def _save_token(self) -> None:
-        if not os.environ.get("CI"):
-            with self.token_file.open("w") as f:
-                json.dump(self._token, f, indent=2)
+        with self.token_file.open("w") as f:
+            json.dump(self._token, f, indent=2)
 
     def _refresh_if_needed(self) -> None:
         expires_at = self._token.get("expires_at", 0)
