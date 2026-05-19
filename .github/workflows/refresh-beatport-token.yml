@@ -2,14 +2,10 @@ name: Refresh Beatport Token
 
 on:
   schedule:
-    # Daily Mon–Sat at 08:00 UTC — Beatport refresh tokens expire ~72h so we must
-    # refresh more frequently than that. Sunday is covered by the weekly-mix run itself.
-    - cron: "0 8 * * 1"
-    - cron: "0 8 * * 2"
-    - cron: "0 8 * * 3"
-    - cron: "0 8 * * 4"
-    - cron: "0 8 * * 5"
-    - cron: "0 8 * * 6"
+    # Daily at 06:00 UTC — Beatport refresh tokens expire ~48h, so we refresh every
+    # day. Sunday runs at 06:00 (2h before the 08:00 weekly mix) so the mix always
+    # starts with a fresh token.
+    - cron: "0 6 * * *"
   workflow_dispatch:
 
 jobs:
