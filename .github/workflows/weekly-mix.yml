@@ -42,11 +42,11 @@ jobs:
           soundcloud:
             token_file: soundcloud_token.json
             playlist_name_template: "WM {week}"
-            pinned_playlist_name: "WM Latest"
+            pinned_playlist_name: "White Eagle Deephouse"
           youtube:
             oauth_file: oauth.json
             playlist_name_template: "WM {week}"
-            pinned_playlist_name: "WM Latest"
+            pinned_playlist_name: "White Eagle Deephouse"
           pipeline:
             database: deephouse.db
             catalog_csv: songs.csv
