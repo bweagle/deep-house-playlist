@@ -33,7 +33,8 @@ def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> 
     """
     Attach youtube_video_id to each candidate.
     Checks the mix_tracks cache first — only calls the API for uncached tracks.
-    Stops immediately on quota exhaustion (403/429) or auth errors (401).
+    Retries up to 3× on 429 (rate limit) with exponential backoff (5s/10s/20s).
+    Stops on 403 (daily quota exhausted) or 401 (auth error).
     """
     from googleapiclient.errors import HttpError
 
@@ -49,16 +50,38 @@ def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> 
             continue
 
         query = f"{c['title']} {c['artist']}"
-        try:
-            video_id = yt.search_track(query, title=c["title"], artist=c["artist"], delay=0.5)
-        except HttpError as e:
-            status_code = int(e.status_code) if hasattr(e, "status_code") else 0
-            if status_code in (401, 403, 429):
-                reason = "quota exhausted" if status_code in (403, 429) else "auth error"
-                print(f"  [yt] {reason} (HTTP {status_code}) — stopping YouTube search.")
+        video_id = None
+        stop_all = False
+
+        for attempt in range(4):  # initial try + up to 3 retries on 429
+            try:
+                video_id = yt.search_track(query, title=c["title"], artist=c["artist"], delay=1.0)
                 break
-            print(f"  [yt] Search error for '{query}': {e}")
-            video_id = None
+            except HttpError as e:
+                status_code = int(e.status_code) if hasattr(e, "status_code") else 0
+                if status_code == 429 and attempt < 3:
+                    wait = 5 * (2 ** attempt)  # 5s, 10s, 20s
+                    print(f"  [yt] rate limited — waiting {wait}s (retry {attempt + 1}/3)…")
+                    time.sleep(wait)
+                elif status_code == 403:
+                    print(f"  [yt] quota exhausted (403) — stopping YouTube search.")
+                    stop_all = True
+                    break
+                elif status_code == 429:
+                    print(f"  [yt] rate limited (429) — max retries reached, stopping YouTube search.")
+                    stop_all = True
+                    break
+                elif status_code == 401:
+                    print(f"  [yt] auth error (401) — stopping YouTube search.")
+                    stop_all = True
+                    break
+                else:
+                    print(f"  [yt] Search error for '{query}': {e}")
+                    break
+
+        if stop_all:
+            break
+
         c["youtube_video_id"] = video_id
         status = "found" if video_id else "not found"
         print(f"  [yt] {status}: {c['title']} — {c['artist']}")
