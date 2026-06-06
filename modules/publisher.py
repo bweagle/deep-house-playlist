@@ -153,7 +153,6 @@ def _publish_soundcloud(
     playlist order reflects SC availability, not the original ranking order.
     """
     from soundcloud_client import SoundCloudClient
-    from modules.filter_ranker import harmonic_sort, _spread_artists
 
     sc_token = config.get("soundcloud", {}).get("token_file", "soundcloud_token.json")
     playlist_template = config.get("soundcloud", {}).get(
@@ -203,9 +202,6 @@ def _publish_soundcloud(
     if not track_ids:
         return
 
-    # Re-sort the found tracks harmonically (they may be a non-contiguous subset)
-    found_tracks = harmonic_sort(found_tracks)
-    found_tracks = _spread_artists(found_tracks)
     track_ids = [t["sc_track_id"] for t in found_tracks]
 
     print("[soundcloud] Final tracklist order:")

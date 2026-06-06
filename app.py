@@ -230,6 +230,12 @@ def cmd_mixtape(args: argparse.Namespace) -> None:
         print(f"[mixtape] Done — {added}/{len(tracks)} tracks added to '{playlist_name}'")
 
 
+def cmd_shuffle(args: argparse.Namespace) -> None:
+    from modules.shuffler import shuffle_pinned_playlists
+    config = _load_config(args.config)
+    shuffle_pinned_playlists(config, verbose=True)
+
+
 def cmd_generate_weekly(args: argparse.Namespace) -> None:
     from modules.scheduler import run_weekly
     config = _load_config(args.config)
@@ -300,6 +306,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--dev", action="store_true",
                        help="Skip recent-exclusion filter")
 
+    # shuffle
+    sub.add_parser("shuffle", help="Randomize the pinned playlists (YouTube + SoundCloud)")
+
     return parser
 
 
@@ -314,6 +323,7 @@ def main() -> None:
         "publish": cmd_publish,
         "generate-weekly": cmd_generate_weekly,
         "mixtape": cmd_mixtape,
+        "shuffle": cmd_shuffle,
     }
     dispatch[args.command](args)
 

@@ -215,6 +215,11 @@ class SoundCloudClient:
     # Playlists
     # ------------------------------------------------------------------
 
+    def get_playlist_track_ids(self, playlist_id: int) -> list[int]:
+        """Return all track IDs in a playlist, in current order."""
+        data = self._get(f"/playlists/{playlist_id}")
+        return [t["id"] for t in (data.get("tracks") or []) if t.get("id")]
+
     def find_playlist(self, name: str) -> Optional[int]:
         """Return the playlist ID matching name from the user's playlists, or None."""
         try:

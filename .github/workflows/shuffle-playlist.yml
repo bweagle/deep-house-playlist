@@ -1,0 +1,51 @@
+name: Shuffle Pinned Playlists
+
+on:
+  schedule:
+    # Every day at 02:00 UTC (10pm EST / 7pm PST)
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  shuffle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Write config.yaml
+        run: |
+          cat > config.yaml << 'EOF'
+          soundcloud:
+            token_file: soundcloud_token.json
+            pinned_playlist_name: "White Eagle Deephouse"
+          youtube:
+            oauth_file: oauth.json
+            pinned_playlist_name: "White Eagle Deephouse"
+          pipeline:
+            database: deephouse.db
+            catalog_csv: songs.csv
+          EOF
+
+      - name: Write YouTube OAuth credentials
+        run: echo '${{ secrets.YOUTUBE_OAUTH_JSON }}' > oauth.json
+
+      - name: Write SoundCloud token
+        run: |
+          if [ -n '${{ secrets.SOUNDCLOUD_TOKEN_JSON }}' ]; then
+            echo '${{ secrets.SOUNDCLOUD_TOKEN_JSON }}' > soundcloud_token.json
+          fi
+
+      - name: Shuffle playlists
+        run: python3 app.py shuffle

@@ -432,8 +432,6 @@ def rank_and_filter(
 
     scored = score_candidates(candidates, taste_profile, db_path)
     top = _apply_artist_cap(scored, final_count, max_per_artist)
-    ordered = harmonic_sort(top)
-    ordered = _spread_artists(ordered)
-    for i, track in enumerate(ordered, start=1):
+    for i, track in enumerate(top, start=1):
         track["rank"] = i
-    return ordered
+    return top

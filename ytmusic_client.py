@@ -140,6 +140,24 @@ class YTMusicClient:
                 removed += 1
         return removed
 
+    def get_playlist_video_ids(self, playlist_id: str) -> list[str]:
+        """Return all video IDs in a playlist, in current order."""
+        video_ids = []
+        page_token = None
+        while True:
+            kwargs: dict = dict(part="contentDetails", playlistId=playlist_id, maxResults=50)
+            if page_token:
+                kwargs["pageToken"] = page_token
+            response = self.youtube.playlistItems().list(**kwargs).execute()
+            for item in response.get("items", []):
+                vid = item.get("contentDetails", {}).get("videoId")
+                if vid:
+                    video_ids.append(vid)
+            page_token = response.get("nextPageToken")
+            if not page_token:
+                break
+        return video_ids
+
     # ------------------------------------------------------------------
     # Search
     # ------------------------------------------------------------------

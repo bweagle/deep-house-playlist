@@ -2,11 +2,11 @@
 Mixtape generator — builds a playlist from the user's own catalog.
 
 Songs are scored by rating (4 = best), an artist cap is applied,
-then the selection is ordered harmonically using the Camelot wheel.
+then selected by score (highest-rated first).
 """
 
 from modules.db import get_connection
-from modules.filter_ranker import harmonic_sort, _spread_artists, _apply_artist_cap
+from modules.filter_ranker import _apply_artist_cap
 
 
 def _rating_score(rating: str | None) -> float:
@@ -78,10 +78,6 @@ def build_mixtape(
     # Cap per artist, take exactly `count` tracks
     selected = _apply_artist_cap(candidates, count, max_per_artist)
 
-    # Harmonic ordering
-    ordered = harmonic_sort(selected)
-    ordered = _spread_artists(ordered)
-
-    for i, t in enumerate(ordered, 1):
+    for i, t in enumerate(selected, 1):
         t["rank"] = i
-    return ordered
+    return selected
