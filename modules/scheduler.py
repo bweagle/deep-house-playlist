@@ -103,12 +103,12 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
 
         # Phase 3: Rank
         if verbose:
-            print(f"\n[Phase 3] Ranking {len(candidates)} candidates → top {final_count}…")
+            print(f"\n[Phase 3] Ranking {len(candidates)} candidates → pool of {final_count * 2} (target {final_count})…")
             if dev:
                 print("  [dev] Skipping recent-exclusion filter. Results will NOT be saved to mix history.")
         exclude_weeks = 0 if dev else config["pipeline"].get("exclude_recent_weeks", 4)
         ranked = rank_and_filter(
-            candidates, taste_profile, db_path, final_count,
+            candidates, taste_profile, db_path, final_count * 2,
             exclude_recent_weeks=exclude_weeks,
             min_bpm=config["pipeline"].get("min_bpm", 0),
             max_bpm=config["pipeline"].get("max_bpm", 0),
@@ -142,6 +142,7 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
             sp=sp,
             dry_run=dry_run,
             dev=dev,
+            yt_target_count=final_count,
         )
 
         published = result.get("added", 0) if not dry_run else 0

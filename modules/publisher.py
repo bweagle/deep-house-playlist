@@ -29,23 +29,29 @@ def _build_yt_cache(db_path: str) -> dict[tuple, str]:
     return {(r["t"], r["a"]): r["youtube_video_id"] for r in rows}
 
 
-def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> list[dict]:
+def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str,
+                    target: int = 0) -> list[dict]:
     """
     Attach youtube_video_id to each candidate.
     Checks the mix_tracks cache first — only calls the API for uncached tracks.
     Retries up to 3× on 429 (rate limit) with exponential backoff (5s/10s/20s).
     Stops on 403 (daily quota exhausted) or 401 (auth error).
+    If target > 0, stops searching once that many tracks have been found.
     """
     from googleapiclient.errors import HttpError
 
     cache = _build_yt_cache(db_path)
     cache_hits = 0
+    found_count = 0
 
     for c in candidates:
+        if target and found_count >= target:
+            break
         key = (c["title"].lower(), c["artist"].lower())
         if key in cache:
             c["youtube_video_id"] = cache[key]
             cache_hits += 1
+            found_count += 1
             print(f"  [yt] cached: {c['title']} — {c['artist']}")
             continue
 
@@ -83,6 +89,8 @@ def _youtube_search(yt: YTMusicClient, candidates: list[dict], db_path: str) -> 
             break
 
         c["youtube_video_id"] = video_id
+        if video_id:
+            found_count += 1
         status = "found" if video_id else "not found"
         print(f"  [yt] {status}: {c['title']} — {c['artist']}")
 
@@ -228,6 +236,7 @@ def publish_mix(
     dry_run: bool = False,
     soundcloud_only: bool = False,
     sc_target_count: int = 0,
+    yt_target_count: int = 0,
     dev: bool = False,
 ) -> dict:
     """
@@ -264,11 +273,14 @@ def publish_mix(
     yt = YTMusicClient(auth_file=auth_file)
 
     # 3. YouTube search (uses cache from previous mixes to save quota)
-    print(f"[publisher] Searching YouTube for {len(ranked_tracks)} tracks…")
-    _youtube_search(yt, ranked_tracks, db_path)
+    pool_size = len(ranked_tracks)
+    print(f"[publisher] Searching YouTube (pool={pool_size}, target={yt_target_count or pool_size})…")
+    _youtube_search(yt, ranked_tracks, db_path, target=yt_target_count)
 
     found = [t for t in ranked_tracks if t.get("youtube_video_id")]
-    print(f"[publisher] {len(found)}/{len(ranked_tracks)} tracks found on YouTube")
+    if yt_target_count:
+        found = found[:yt_target_count]
+    print(f"[publisher] {len(found)}/{pool_size} tracks found on YouTube")
 
     if not found:
         print("[publisher] No tracks found — skipping playlist creation.")

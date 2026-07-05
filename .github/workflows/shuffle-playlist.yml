@@ -41,11 +41,5 @@ jobs:
       - name: Write YouTube OAuth credentials
         run: echo '${{ secrets.YOUTUBE_OAUTH_JSON }}' > oauth.json
 
-      - name: Write SoundCloud token
-        run: |
-          if [ -n '${{ secrets.SOUNDCLOUD_TOKEN_JSON }}' ]; then
-            echo '${{ secrets.SOUNDCLOUD_TOKEN_JSON }}' > soundcloud_token.json
-          fi
-
       - name: Shuffle playlists
         run: python3 app.py shuffle
