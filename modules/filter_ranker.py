@@ -251,6 +251,11 @@ def score_candidates(
             + 0.15 * n_score
         )
 
+        # Beatport candidates come from verified chart data — give them a
+        # small bonus so they rank above equivalent LLM/Last.fm suggestions.
+        if c.get("source") == "beatport":
+            composite += 0.05
+
         scored.append({**c, "score": round(composite, 4)})
 
     scored.sort(key=lambda x: x["score"], reverse=True)

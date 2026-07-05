@@ -20,6 +20,7 @@ from datetime import datetime, timedelta, timezone
 from modules.beatport_client import (
     BeatportClient,
     GENRE_DEEP_HOUSE,
+    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 )
@@ -28,6 +29,7 @@ from modules.db import get_connection
 # Genres to pull charts from, in priority order
 _CHART_GENRES = [
     GENRE_DEEP_HOUSE,
+    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 ]

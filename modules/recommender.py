@@ -55,11 +55,13 @@ def run_recommenders(
             print(f"[recommender] Could not load Beatport client: {e}")
 
     # --- Beatport ---
+    # Beatport gets 2× the per-source cap — it's the primary chart source and
+    # pulling a larger pool gives the ranker more real, verified candidates.
     if bp is not None:
         from modules.recommender_beatport import get_beatport_recommendations
         print("[recommender] Running Beatport source…")
         try:
-            _add(get_beatport_recommendations(bp, db_path, run_id, count=per_source))
+            _add(get_beatport_recommendations(bp, db_path, run_id, count=per_source * 2))
         except Exception as e:
             print(f"  [beatport] Source failed: {e}")
     else:
