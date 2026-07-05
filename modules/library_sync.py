@@ -16,6 +16,7 @@ def sync_youtube(
     auth_file: str = "oauth.json",
     re_search_days: int = 90,
     verbose: bool = True,
+    max_per_run: int = 0,
 ) -> tuple[int, int, int]:
     """
     Search YouTube for catalog songs that haven't been resolved yet (or whose
@@ -49,7 +50,11 @@ def sync_youtube(
             print(f"[library-sync] YouTube: all {total} catalog songs already resolved — nothing to do.")
         return 0, 0, total
 
-    if verbose:
+    if max_per_run and len(rows) > max_per_run:
+        rows = rows[:max_per_run]
+        if verbose:
+            print(f"[library-sync] YouTube: capped at {max_per_run} songs this run (CI quota limit)…")
+    elif verbose:
         print(f"[library-sync] YouTube: {len(rows)} songs to search ({already_cached} already cached)…")
 
     yt = YTMusicClient(auth_file=auth_file)
