@@ -16,13 +16,19 @@ from ytmusic_client import YTMusicClient
 
 
 def _build_yt_cache(db_path: str) -> dict[tuple, str]:
-    """Return a (title.lower, artist.lower) → youtube_video_id map from past mixes."""
+    """
+    Return a (title.lower, artist.lower) → youtube_video_id map.
+    Includes both past mix tracks and catalog songs so catalog classics
+    are always instant cache hits (no quota spent on searching them).
+    """
     conn = get_connection(db_path)
     rows = conn.execute(
         """
         SELECT LOWER(title) AS t, LOWER(artist) AS a, youtube_video_id
-        FROM mix_tracks
-        WHERE youtube_video_id IS NOT NULL
+        FROM mix_tracks WHERE youtube_video_id IS NOT NULL
+        UNION
+        SELECT LOWER(title) AS t, LOWER(COALESCE(artist, '')) AS a, youtube_video_id
+        FROM catalog WHERE youtube_video_id IS NOT NULL
         """
     ).fetchall()
     conn.close()
