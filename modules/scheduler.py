@@ -128,9 +128,16 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
             max_bpm=config["pipeline"].get("max_bpm", 0),
         )
 
-        # Combine: classics first (instant cache hits), then regular pool
-        # Re-spread artists across the combined list
-        combined = _spread_artists(classics + ranked)
+        # Interleave classics into the ranked pool at evenly-spaced positions,
+        # then re-spread artists across the combined list.
+        # e.g. 2 classics in a 38-track pool → inserted at positions ~13 and ~26.
+        combined_pre = list(ranked)
+        if classics:
+            n = len(combined_pre)
+            for i, classic in enumerate(classics):
+                pos = round(n * (i + 1) / (len(classics) + 1))
+                combined_pre.insert(pos + i, classic)
+        combined = _spread_artists(combined_pre)
         for i, t in enumerate(combined, 1):
             t["rank"] = i
 
