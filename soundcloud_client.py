@@ -203,7 +203,7 @@ class SoundCloudClient:
                 if candidates:
                     return candidates[0]["id"]
 
-        except requests.HTTPError:
+        except (requests.HTTPError, RuntimeError):
             raise
         except Exception:
             pass

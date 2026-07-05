@@ -30,7 +30,7 @@ def run_recommenders(
 
     def _add(batch: list[dict]) -> None:
         for c in batch:
-            key = (c["title"].lower(), c["artist"].lower())
+            key = (" ".join(c["title"].lower().split()), " ".join(c["artist"].lower().split()))
             if key not in seen:
                 seen.add(key)
                 all_candidates.append(c)
