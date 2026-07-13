@@ -20,16 +20,19 @@ from datetime import datetime, timedelta, timezone
 from modules.beatport_client import (
     BeatportClient,
     GENRE_DEEP_HOUSE,
-    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 )
 from modules.db import get_connection
 
-# Genres to pull charts from, in priority order
+# Genres to pull charts from, in priority order.
+# NOTE: Progressive House is intentionally excluded until the correct Beatport
+# genre ID is confirmed. GENRE_PROGRESSIVE_HOUSE = 15 pulled the wrong content
+# (ethnic/world music). To find the correct ID, open beatport.com/genre/progressive-house
+# in a browser and read the numeric ID from the URL slug, then add it to
+# beatport_client.py and re-add it here.
 _CHART_GENRES = [
     GENRE_DEEP_HOUSE,
-    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 ]
