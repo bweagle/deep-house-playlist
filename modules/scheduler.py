@@ -102,6 +102,11 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
             print("  No candidates — pipeline aborted.")
             return {"run_id": run_id, "status": "failed"}
 
+        if verbose:
+            from collections import Counter
+            source_counts = Counter(c.get("source", "unknown") for c in candidates)
+            print(f"  Sources: " + ", ".join(f"{s}={n}" for s, n in source_counts.most_common()))
+
         # Phase 3: Rank
         if verbose:
             print(f"\n[Phase 3] Ranking candidates…")
@@ -145,8 +150,10 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
             print(f"  Pool: {len(classics)} catalog classic(s) + {len(ranked)} ranked (targeting {final_count}):")
             for t in combined:
                 key_str = t.get("camelot_key") or t.get("key_camelot") or "?"
+                reason = t.get("reason", "")
+                reason_str = f" [{reason}]" if reason else ""
                 print(f"    {t['rank']:2}. [{t['source']:<8}] {t['title']} — {t['artist']}  "
-                      f"({key_str}, score={t.get('score', 0):.2f})")
+                      f"({key_str}, score={t.get('score', 0):.2f}){reason_str}")
 
         # Phase 4: Publish
         if verbose:

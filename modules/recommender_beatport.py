@@ -38,7 +38,13 @@ _CHART_GENRES = [
 _EDITORIAL_CHARTS = {
     "the-hype-deep-house": "Deep House Hype",
     "best-new-tracks-deep-house": "Best New Tracks Deep House",
+    "the-hype-progressive-house": "Progressive House Hype",
+    "best-new-tracks-progressive-house": "Best New Tracks Progressive House",
 }
+
+# Max tracks per artist from the genre API — prevents one prolific uploader
+# from flooding the pool with a numbered series (e.g. "Uzbekistan meet Turkey Reyhan46")
+_MAX_PER_ARTIST_GENRE = 1
 
 
 def get_top_catalog_artist_ids(db_path: str, top_n: int = 20) -> list[int]:
@@ -89,9 +95,10 @@ def get_beatport_recommendations(
     conn.close()
 
     seen: set[tuple] = set()
+    artist_genre_counts: dict[str, int] = {}  # tracks added per artist from genre charts
     candidates: list[dict] = []
 
-    def _add(track: dict, reason: str) -> bool:
+    def _add(track: dict, reason: str, artist_cap: int = 0) -> bool:
         artist = track.get("artist", "").strip()
         label = track.get("label", "").strip()
         # Skip tracks where Beatport returned no artist or used the label as the artist
@@ -100,7 +107,12 @@ def get_beatport_recommendations(
         key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:
             return False
+        # Per-artist cap: prevent a single prolific uploader from flooding the pool
+        if artist_cap and artist_genre_counts.get(artist.lower(), 0) >= artist_cap:
+            return False
         seen.add(key)
+        if artist_cap:
+            artist_genre_counts[artist.lower()] = artist_genre_counts.get(artist.lower(), 0) + 1
         candidates.append({
             "run_id": run_id,
             "source": "beatport",
@@ -119,37 +131,42 @@ def get_beatport_recommendations(
         })
         return True
 
-    # 1. Genre top charts — limited to last 3 months
+    # 1. Genre top charts — limited to last 3 months, 1 track per artist max
     since = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%d")
     for genre_id in _CHART_GENRES:
         if len(candidates) >= count * 3:
             break
         print(f"  [beatport] Fetching genre {genre_id} top tracks (since {since})…")
+        n_before = len(candidates)
         for track in bp.get_genre_top_tracks(genre_id, per_page=50, since_days=90):
-            _add(track, f"Beatport genre {genre_id} top chart")
+            _add(track, f"Beatport genre {genre_id} top chart", artist_cap=_MAX_PER_ARTIST_GENRE)
+        print(f"  [beatport] Genre {genre_id}: {len(candidates) - n_before} added")
 
-    # 2. Editorial charts
-    for slug, label in _EDITORIAL_CHARTS.items():
+    # 2. Editorial charts — already curated, no artist cap needed
+    for slug, chart_label in _EDITORIAL_CHARTS.items():
         if len(candidates) >= count * 3:
             break
-        print(f"  [beatport] Fetching editorial chart: {label}…")
+        print(f"  [beatport] Fetching editorial chart: {chart_label}…")
+        n_before = len(candidates)
         for track in bp.get_chart_tracks(slug, per_page=50):
-            _add(track, f"Beatport editorial: {label}")
+            _add(track, f"Beatport editorial: {chart_label}")
+        print(f"  [beatport] Editorial '{chart_label}': {len(candidates) - n_before} added")
 
     # 3. Artist new releases
     artist_ids = get_top_catalog_artist_ids(db_path)
     print(f"  [beatport] Fetching new releases for {len(artist_ids)} top artists…")
+    n_before = len(candidates)
     for artist_id in artist_ids[:20]:
         if len(candidates) >= count * 4:
             break
         for track in bp.get_artist_recent_tracks(artist_id, days=30):
             _add(track, f"New release from catalog artist (id={artist_id})")
+    print(f"  [beatport] Artist new releases: {len(candidates) - n_before} added")
 
     # Trim to count
     candidates = candidates[:count]
     _save_candidates(candidates, db_path)
     print(f"  [beatport] {len(candidates)} candidates generated")
-    return candidates
 
 
 def _save_candidates(candidates: list[dict], db_path: str) -> None:
