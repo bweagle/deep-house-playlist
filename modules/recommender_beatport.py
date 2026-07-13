@@ -20,19 +20,16 @@ from datetime import datetime, timedelta, timezone
 from modules.beatport_client import (
     BeatportClient,
     GENRE_DEEP_HOUSE,
+    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 )
 from modules.db import get_connection
 
 # Genres to pull charts from, in priority order.
-# NOTE: Progressive House is intentionally excluded until the correct Beatport
-# genre ID is confirmed. GENRE_PROGRESSIVE_HOUSE = 15 pulled the wrong content
-# (ethnic/world music). To find the correct ID, open beatport.com/genre/progressive-house
-# in a browser and read the numeric ID from the URL slug, then add it to
-# beatport_client.py and re-add it here.
 _CHART_GENRES = [
     GENRE_DEEP_HOUSE,
+    GENRE_PROGRESSIVE_HOUSE,
     GENRE_MELODIC_HOUSE_TECHNO,
     GENRE_ORGANIC_HOUSE,
 ]
@@ -128,7 +125,7 @@ def get_beatport_recommendations(
         if len(candidates) >= count * 3:
             break
         print(f"  [beatport] Fetching genre {genre_id} top tracks (since {since})…")
-        for track in bp.get_genre_top_tracks(genre_id, per_page=100, since_days=90):
+        for track in bp.get_genre_top_tracks(genre_id, per_page=50, since_days=90):
             _add(track, f"Beatport genre {genre_id} top chart")
 
     # 2. Editorial charts
@@ -136,7 +133,7 @@ def get_beatport_recommendations(
         if len(candidates) >= count * 3:
             break
         print(f"  [beatport] Fetching editorial chart: {label}…")
-        for track in bp.get_chart_tracks(slug, per_page=100):
+        for track in bp.get_chart_tracks(slug, per_page=50):
             _add(track, f"Beatport editorial: {label}")
 
     # 3. Artist new releases
