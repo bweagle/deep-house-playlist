@@ -34,13 +34,11 @@ _CHART_GENRES = [
     GENRE_ORGANIC_HOUSE,
 ]
 
-# Named editorial charts to pull (slug → human label)
-_EDITORIAL_CHARTS = {
-    "the-hype-deep-house": "Deep House Hype",
-    "best-new-tracks-deep-house": "Best New Tracks Deep House",
-    "the-hype-progressive-house": "Progressive House Hype",
-    "best-new-tracks-progressive-house": "Best New Tracks Progressive House",
-}
+# Named editorial charts to pull (slug → human label).
+# NOTE: Beatport editorial chart slugs need to be verified against the live API
+# before re-enabling. All previously known slugs returned 404.
+# To find valid slugs: GET /v4/catalog/charts/ with a valid token.
+_EDITORIAL_CHARTS: dict[str, str] = {}
 
 # Max tracks per artist from the genre API — prevents one prolific uploader
 # from flooding the pool with a numbered series (e.g. "Uzbekistan meet Turkey Reyhan46")
@@ -167,6 +165,7 @@ def get_beatport_recommendations(
     candidates = candidates[:count]
     _save_candidates(candidates, db_path)
     print(f"  [beatport] {len(candidates)} candidates generated")
+    return candidates
 
 
 def _save_candidates(candidates: list[dict], db_path: str) -> None:
