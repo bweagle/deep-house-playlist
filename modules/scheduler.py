@@ -127,7 +127,7 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
 
         # Rank a 2× pool for the regular slots
         ranked = rank_and_filter(
-            candidates, taste_profile, db_path, n_regular * 2,
+            candidates, taste_profile, db_path, n_regular * 3,
             exclude_recent_weeks=exclude_weeks,
             min_bpm=config["pipeline"].get("min_bpm", 0),
             max_bpm=config["pipeline"].get("max_bpm", 0),

@@ -96,11 +96,17 @@ def get_beatport_recommendations(
     artist_genre_counts: dict[str, int] = {}  # tracks added per artist from genre charts
     candidates: list[dict] = []
 
+    def _has_non_latin(text: str) -> bool:
+        return any(ord(c) > 0x024F and c.isalpha() for c in text)
+
     def _add(track: dict, reason: str, artist_cap: int = 0) -> bool:
         artist = track.get("artist", "").strip()
         label = track.get("label", "").strip()
         # Skip tracks where Beatport returned no artist or used the label as the artist
         if not artist or (label and artist.lower() == label.lower()):
+            return False
+        # Skip tracks with non-Latin script in title or artist (Arabic, Cyrillic, etc.)
+        if _has_non_latin(track.get("title", "")) or _has_non_latin(artist):
             return False
         key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:
