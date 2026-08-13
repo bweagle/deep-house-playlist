@@ -256,6 +256,7 @@ class BeatportClient:
             "genre_id": genre_obj.get("id"),
             "sub_genre": (sub_genre_obj.get("name") or "") if sub_genre_obj else "",
             "label": label_obj.get("name", ""),
+            "label_id": label_obj.get("id"),
             "release_date": raw.get("publish_date") or raw.get("release_date"),
             "duration_ms": BeatportClient._parse_length_ms(raw.get("length") or raw.get("length_ms")),
         }
@@ -316,6 +317,15 @@ class BeatportClient:
         except Exception as e:
             print(f"  [beatport] Genre {genre_id} top tracks error: {e}")
             return []
+
+    def get_label_track_count(self, label_id: int) -> int | None:
+        """Return the total number of tracks on a label (uses pagination count), or None on error."""
+        try:
+            data = self._get(f"/catalog/labels/{label_id}/tracks/", per_page=1)
+            return data.get("count")
+        except Exception as e:
+            print(f"  [beatport] Label {label_id} track count error: {e}")
+            return None
 
     def get_chart_tracks(self, chart_slug: str, per_page: int = 100) -> list[dict]:
         """Tracks from a named editorial chart (e.g. 'the-hype-deep-house')."""

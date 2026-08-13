@@ -103,6 +103,14 @@ def init_db(db_path: str | Path = _DEFAULT_DB) -> None:
             label            TEXT
         );
 
+        -- Beatport label release counts (cached to avoid repeated API calls)
+        CREATE TABLE IF NOT EXISTS label_cache (
+            label_id    INTEGER PRIMARY KEY,
+            name        TEXT,
+            track_count INTEGER,
+            fetched_at  TEXT
+        );
+
         -- Pipeline run log
         CREATE TABLE IF NOT EXISTS run_log (
             run_id          TEXT PRIMARY KEY,

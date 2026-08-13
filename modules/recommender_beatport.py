@@ -59,7 +59,14 @@ _BLOCKED_LABELS = {
     "soundrop",
     "stem disintermedia",
     "stem.ai",
+    "online house music",
+    "spirit sounds of trance",
 }
+
+# Labels with fewer than this many total Beatport releases are treated as
+# micro/vanity labels and excluded.  Checked via the Beatport API and cached
+# in the label_cache table for 30 days.
+_MIN_LABEL_RELEASES = 50
 
 
 def get_top_catalog_artist_ids(db_path: str, top_n: int = 20) -> list[int]:
@@ -112,9 +119,45 @@ def get_beatport_recommendations(
     seen: set[tuple] = set()
     artist_genre_counts: dict[str, int] = {}  # tracks added per artist from genre charts
     candidates: list[dict] = []
+    _label_count_cache: dict[int, int] = {}  # label_id → track_count (runtime cache)
 
     def _has_non_latin(text: str) -> bool:
         return any(ord(c) > 0x024F and c.isalpha() for c in text)
+
+    def _is_micro_label(label_id: int | None, label_name: str) -> bool:
+        """Return True if the label has fewer than _MIN_LABEL_RELEASES tracks on Beatport."""
+        if not label_id:
+            return False  # no ID — can't check, give benefit of the doubt
+        if label_id in _label_count_cache:
+            return _label_count_cache[label_id] < _MIN_LABEL_RELEASES
+        # Check DB cache (30-day TTL)
+        db_conn = get_connection(db_path)
+        row = db_conn.execute(
+            "SELECT track_count, fetched_at FROM label_cache WHERE label_id = ?",
+            (label_id,),
+        ).fetchone()
+        db_conn.close()
+        if row:
+            fetched = datetime.fromisoformat(row["fetched_at"])
+            if (datetime.now(timezone.utc) - fetched).days < 30:
+                count = row["track_count"]
+                _label_count_cache[label_id] = count
+                return count < _MIN_LABEL_RELEASES
+        # Fetch from Beatport API
+        count = bp.get_label_track_count(label_id)
+        if count is None:
+            return False  # API error — give benefit of the doubt
+        _label_count_cache[label_id] = count
+        db_conn = get_connection(db_path)
+        db_conn.execute(
+            "INSERT OR REPLACE INTO label_cache (label_id, name, track_count, fetched_at) VALUES (?, ?, ?, ?)",
+            (label_id, label_name, count, datetime.now(timezone.utc).isoformat()),
+        )
+        db_conn.commit()
+        db_conn.close()
+        if count < _MIN_LABEL_RELEASES:
+            print(f"  [beatport] Skipping micro-label '{label_name}' ({count} tracks)")
+        return count < _MIN_LABEL_RELEASES
 
     def _add(track: dict, reason: str, artist_cap: int = 0) -> bool:
         artist = track.get("artist", "").strip()
@@ -127,6 +170,9 @@ def get_beatport_recommendations(
             return False
         # Skip tracks on self-distribution aggregators (not real labels)
         if label and any(label.lower().startswith(bl) for bl in _BLOCKED_LABELS):
+            return False
+        # Skip micro/vanity labels (fewer than _MIN_LABEL_RELEASES tracks on Beatport)
+        if _is_micro_label(track.get("label_id"), label):
             return False
         key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:
