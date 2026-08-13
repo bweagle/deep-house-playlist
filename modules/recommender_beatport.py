@@ -44,6 +44,23 @@ _EDITORIAL_CHARTS: dict[str, str] = {}
 # from flooding the pool with a numbered series (e.g. "Uzbekistan meet Turkey Reyhan46")
 _MAX_PER_ARTIST_GENRE = 1
 
+# Self-distribution aggregators — not real labels.  Tracks released through
+# these platforms are almost always bedroom / micro-releases that don't belong
+# in a curated mix.  Matching is case-insensitive prefix / full-name.
+_BLOCKED_LABELS = {
+    "distrokid",
+    "tunecore",
+    "onerpm",
+    "landr",
+    "cd baby",
+    "cdbaby",
+    "amuse",
+    "routenote",
+    "soundrop",
+    "stem disintermedia",
+    "stem.ai",
+}
+
 
 def get_top_catalog_artist_ids(db_path: str, top_n: int = 20) -> list[int]:
     """Return Beatport artist IDs for the top N catalog artists by play count."""
@@ -107,6 +124,9 @@ def get_beatport_recommendations(
             return False
         # Skip tracks with non-Latin script in title or artist (Arabic, Cyrillic, etc.)
         if _has_non_latin(track.get("title", "")) or _has_non_latin(artist):
+            return False
+        # Skip tracks on self-distribution aggregators (not real labels)
+        if label and any(label.lower().startswith(bl) for bl in _BLOCKED_LABELS):
             return False
         key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:
