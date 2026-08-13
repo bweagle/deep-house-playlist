@@ -68,6 +68,13 @@ _BLOCKED_LABELS = {
 # in the label_cache table for 30 days.
 _MIN_LABEL_RELEASES = 50
 
+# Explicitly allow these labels regardless of release count.
+# Use this to rescue small boutique labels blocked by _MIN_LABEL_RELEASES.
+# Run `python3 app.py show-labels` to see what is currently being blocked.
+_LABEL_ALLOWLIST: set[str] = {
+    # e.g. "odd one out",
+}
+
 
 def get_top_catalog_artist_ids(db_path: str, top_n: int = 20) -> list[int]:
     """Return Beatport artist IDs for the top N catalog artists by play count."""
@@ -126,6 +133,8 @@ def get_beatport_recommendations(
 
     def _is_micro_label(label_id: int | None, label_name: str) -> bool:
         """Return True if the label has fewer than _MIN_LABEL_RELEASES tracks on Beatport."""
+        if label_name.lower() in _LABEL_ALLOWLIST:
+            return False  # explicitly allowed
         if not label_id:
             return False  # no ID — can't check, give benefit of the doubt
         if label_id in _label_count_cache:

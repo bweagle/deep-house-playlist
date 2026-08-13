@@ -230,6 +230,56 @@ def cmd_mixtape(args: argparse.Namespace) -> None:
         print(f"[mixtape] Done — {added}/{len(tracks)} tracks added to '{playlist_name}'")
 
 
+def cmd_show_labels(args: argparse.Namespace) -> None:
+    from modules.db import get_connection
+    from modules.recommender_beatport import _BLOCKED_LABELS, _MIN_LABEL_RELEASES, _LABEL_ALLOWLIST
+
+    config = _load_config(args.config)
+    db_path = config["pipeline"]["database"]
+
+    conn = get_connection(db_path)
+    rows = conn.execute(
+        "SELECT label_id, name, track_count, fetched_at FROM label_cache ORDER BY track_count ASC"
+    ).fetchall()
+    conn.close()
+
+    if not rows:
+        print("No labels cached yet — run the pipeline first.")
+        return
+
+    blocked, passing, allowlisted = [], [], []
+    for row in rows:
+        name = row["name"] or ""
+        count = row["track_count"]
+        if any(name.lower().startswith(bl) for bl in _BLOCKED_LABELS):
+            continue  # static blocklist — not interesting to show
+        if name.lower() in _LABEL_ALLOWLIST:
+            allowlisted.append(row)
+        elif count < _MIN_LABEL_RELEASES:
+            blocked.append(row)
+        else:
+            passing.append(row)
+
+    print(f"\n=== Blocked micro-labels (< {_MIN_LABEL_RELEASES} releases) ===")
+    if blocked:
+        for row in blocked:
+            print(f"  {row['name']:<42} {row['track_count']:4} releases  (checked {row['fetched_at'][:10]})")
+    else:
+        print("  (none)")
+
+    print(f"\n=== Passing labels (>= {_MIN_LABEL_RELEASES} releases) ===")
+    for row in sorted(passing, key=lambda r: r["track_count"]):
+        print(f"  {row['name']:<42} {row['track_count']:4} releases")
+
+    if allowlisted:
+        print(f"\n=== Allowlisted (count check bypassed) ===")
+        for row in allowlisted:
+            print(f"  {row['name']:<42} {row['track_count']:4} releases")
+
+    print(f"\nTo rescue a blocked label: add its name (lowercase) to _LABEL_ALLOWLIST")
+    print(f"  in modules/recommender_beatport.py")
+
+
 def cmd_shuffle(args: argparse.Namespace) -> None:
     from modules.shuffler import shuffle_pinned_playlists
     config = _load_config(args.config)
@@ -306,6 +356,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_gen.add_argument("--dev", action="store_true",
                        help="Skip recent-exclusion filter")
 
+    # show-labels
+    sub.add_parser("show-labels", help="Show Beatport labels seen so far — blocked micro vs. passing")
+
     # shuffle
     sub.add_parser("shuffle", help="Randomize the pinned playlists (YouTube + SoundCloud)")
 
@@ -323,6 +376,7 @@ def main() -> None:
         "publish": cmd_publish,
         "generate-weekly": cmd_generate_weekly,
         "mixtape": cmd_mixtape,
+        "show-labels": cmd_show_labels,
         "shuffle": cmd_shuffle,
     }
     dispatch[args.command](args)
