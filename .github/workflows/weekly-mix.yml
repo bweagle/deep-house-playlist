@@ -94,6 +94,15 @@ jobs:
             python3 app.py generate-weekly
           fi
 
+      - name: Write back Beatport token (in case it was refreshed mid-run)
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GH_PAT }}
+        run: |
+          gh secret set BEATPORT_TOKEN_JSON \
+            --repo bweagle/deep-house-playlist \
+            --body "$(cat beatport_token.json)"
+
       - name: Upload run artifacts
         if: always()
         uses: actions/upload-artifact@v4
