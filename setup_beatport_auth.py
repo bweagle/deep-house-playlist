@@ -128,20 +128,17 @@ def main():
     parser.add_argument(
         "--method",
         choices=["auto", "password", "browser"],
-        default="auto",
-        help="Login method (default: auto — tries password first, then browser)",
+        default="browser",
+        help="Login method (default: browser)",
     )
     args = parser.parse_args()
 
     token_data = None
 
-    if args.method in ("auto", "password"):
+    if args.method == "password":
         print("Beatport authentication setup")
         print("Enter your Beatport account credentials (username, not email):\n")
         token_data = _password_auth()
-
-        if token_data is None and args.method == "auto":
-            print("\nSwitching to browser login (works for Google/Apple accounts)…")
 
     if token_data is None and args.method in ("auto", "browser"):
         token_data = _browser_auth()
