@@ -154,6 +154,8 @@ def main():
         json.dump(token_data, f, indent=2)
 
     print(f"\nSuccess! Token saved to '{TOKEN_FILE}'.")
+    print("\nTo push to GitHub (required for CI to work):")
+    print(f"  gh secret set BEATPORT_TOKEN_JSON --repo bweagle/deep-house-playlist --body \"$(cat {TOKEN_FILE})\"")
     return 0
 
 
