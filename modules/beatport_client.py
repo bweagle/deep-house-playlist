@@ -321,7 +321,7 @@ class BeatportClient:
     def get_label_track_count(self, label_id: int) -> int | None:
         """Return the total number of tracks on a label (uses pagination count), or None on error."""
         try:
-            data = self._get(f"/catalog/labels/{label_id}/tracks/", per_page=1)
+            data = self._get("/catalog/tracks/", label_id=label_id, per_page=1)
             return data.get("count")
         except Exception as e:
             print(f"  [beatport] Label {label_id} track count error: {e}")
