@@ -330,14 +330,15 @@ class BeatportClient:
     def get_label_recent_count_by_name(self, label_name: str, days: int = 90) -> int | None:
         """
         Return the number of tracks a label released in the last N days, looked up by name.
+        Uses /catalog/search/?type=labels to find the label ID, then
+        /catalog/tracks/?label_id={id}&publish_date__gte={since}.
         Returns None if the label cannot be found or on API error.
         """
         from datetime import datetime, timedelta, timezone
         since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
         try:
-            search = self._get("/catalog/labels/", q=label_name, per_page=5)
-            labels = search.get("results") or []
-            # Prefer exact name match
+            search = self._get("/catalog/search/", q=label_name, type="labels", per_page=5)
+            labels = search.get("labels") or []
             label_id = None
             for lb in labels:
                 if (lb.get("name") or "").lower() == label_name.lower():
@@ -348,7 +349,8 @@ class BeatportClient:
             if not label_id:
                 return None
             data = self._get(
-                f"/catalog/labels/{label_id}/tracks/",
+                "/catalog/tracks/",
+                label_id=label_id,
                 publish_date__gte=since,
                 per_page=1,
             )

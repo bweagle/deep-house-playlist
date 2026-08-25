@@ -75,9 +75,11 @@ _MIN_LABEL_RELEASES = 50
 
 # Labels that released more than this many tracks in the last 90 days are
 # treated as churn factories (content farms, not real curation).
-# ~20 tracks/month is the threshold — real labels release 2-10/month.
+# Set high (3000) because Beatport's label_id filter includes sublabels and
+# compilations, inflating counts — verified: LW Recordings = 10,000+,
+# Afterlife = 5, Keinemusik = 179, Global Underground = 2,326.
 # Cached in label_churn_cache with a 7-day TTL.
-_MAX_LABEL_RECENT_RELEASES = 60
+_MAX_LABEL_RECENT_RELEASES = 3000
 
 # Explicitly allow these labels regardless of release count or churn score.
 # Use this to rescue labels blocked by either filter.
