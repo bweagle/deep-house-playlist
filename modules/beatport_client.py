@@ -327,6 +327,36 @@ class BeatportClient:
             print(f"  [beatport] Label {label_id} track count error: {e}")
             return None
 
+    def get_label_recent_count_by_name(self, label_name: str, days: int = 90) -> int | None:
+        """
+        Return the number of tracks a label released in the last N days, looked up by name.
+        Returns None if the label cannot be found or on API error.
+        """
+        from datetime import datetime, timedelta, timezone
+        since = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
+        try:
+            search = self._get("/catalog/labels/", q=label_name, per_page=5)
+            labels = search.get("results") or []
+            # Prefer exact name match
+            label_id = None
+            for lb in labels:
+                if (lb.get("name") or "").lower() == label_name.lower():
+                    label_id = lb.get("id")
+                    break
+            if label_id is None and labels:
+                label_id = labels[0].get("id")
+            if not label_id:
+                return None
+            data = self._get(
+                f"/catalog/labels/{label_id}/tracks/",
+                publish_date__gte=since,
+                per_page=1,
+            )
+            return data.get("count")
+        except Exception as e:
+            print(f"  [beatport] Label '{label_name}' recent count error: {e}")
+            return None
+
     def get_chart_tracks(self, chart_slug: str, per_page: int = 100) -> list[dict]:
         """Tracks from a named editorial chart (e.g. 'the-hype-deep-house')."""
         try:

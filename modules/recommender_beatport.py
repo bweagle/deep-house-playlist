@@ -68,8 +68,14 @@ _BLOCKED_LABELS = {
 # in the label_cache table for 30 days.
 _MIN_LABEL_RELEASES = 50
 
-# Explicitly allow these labels regardless of release count.
-# Use this to rescue small boutique labels blocked by _MIN_LABEL_RELEASES.
+# Labels that released more than this many tracks in the last 90 days are
+# treated as churn factories (content farms, not real curation).
+# ~20 tracks/month is the threshold — real labels release 2-10/month.
+# Cached in label_churn_cache with a 7-day TTL.
+_MAX_LABEL_RECENT_RELEASES = 60
+
+# Explicitly allow these labels regardless of release count or churn score.
+# Use this to rescue labels blocked by either filter.
 # Run `python3 app.py show-labels` to see what is currently being blocked.
 _LABEL_ALLOWLIST: set[str] = {
     # e.g. "odd one out",
@@ -126,7 +132,8 @@ def get_beatport_recommendations(
     seen: set[tuple] = set()
     artist_genre_counts: dict[str, int] = {}  # tracks added per artist from genre charts
     candidates: list[dict] = []
-    _label_count_cache: dict[int, int] = {}  # label_id → track_count (runtime cache)
+    _label_count_cache: dict[int, int] = {}   # label_id → track_count (runtime cache)
+    _label_churn_cache: dict[str, int] = {}   # label_name → recent_count (runtime cache)
 
     def _has_non_latin(text: str) -> bool:
         return any(ord(c) > 0x024F and c.isalpha() for c in text)
@@ -168,6 +175,40 @@ def get_beatport_recommendations(
             print(f"  [beatport] Skipping micro-label '{label_name}' ({count} tracks)")
         return count < _MIN_LABEL_RELEASES
 
+    def _is_churn_label(label_name: str) -> bool:
+        """Return True if the label releases more than _MAX_LABEL_RECENT_RELEASES tracks/90 days."""
+        key = label_name.lower()
+        if key in _label_churn_cache:
+            return _label_churn_cache[key] > _MAX_LABEL_RECENT_RELEASES
+        # Check DB cache (7-day TTL)
+        db_conn = get_connection(db_path)
+        row = db_conn.execute(
+            "SELECT recent_count, fetched_at FROM label_churn_cache WHERE name = ?",
+            (label_name,),
+        ).fetchone()
+        db_conn.close()
+        if row:
+            fetched = datetime.fromisoformat(row["fetched_at"])
+            if (datetime.now(timezone.utc) - fetched).days < 7:
+                count = row["recent_count"]
+                _label_churn_cache[key] = count
+                return count > _MAX_LABEL_RECENT_RELEASES
+        # Fetch from Beatport API
+        count = bp.get_label_recent_count_by_name(label_name)
+        if count is None:
+            return False  # API error — benefit of the doubt
+        _label_churn_cache[key] = count
+        db_conn = get_connection(db_path)
+        db_conn.execute(
+            "INSERT OR REPLACE INTO label_churn_cache (name, recent_count, fetched_at) VALUES (?, ?, ?)",
+            (label_name, count, datetime.now(timezone.utc).isoformat()),
+        )
+        db_conn.commit()
+        db_conn.close()
+        if count > _MAX_LABEL_RECENT_RELEASES:
+            print(f"  [beatport] Skipping churn label '{label_name}' ({count} tracks in 90 days)")
+        return count > _MAX_LABEL_RECENT_RELEASES
+
     def _add(track: dict, reason: str, artist_cap: int = 0) -> bool:
         artist = track.get("artist", "").strip()
         label = track.get("label", "").strip()
@@ -182,6 +223,9 @@ def get_beatport_recommendations(
             return False
         # Skip micro/vanity labels (fewer than _MIN_LABEL_RELEASES tracks on Beatport)
         if _is_micro_label(track.get("label_id"), label):
+            return False
+        # Skip churn factories (releases too many tracks per 90 days)
+        if label and _is_churn_label(label):
             return False
         key = (track["title"].lower(), artist.lower())
         if key in seen or key in existing:

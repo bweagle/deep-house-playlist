@@ -232,49 +232,72 @@ def cmd_mixtape(args: argparse.Namespace) -> None:
 
 def cmd_show_labels(args: argparse.Namespace) -> None:
     from modules.db import get_connection
-    from modules.recommender_beatport import _BLOCKED_LABELS, _MIN_LABEL_RELEASES, _LABEL_ALLOWLIST
+    from modules.recommender_beatport import (
+        _BLOCKED_LABELS, _MIN_LABEL_RELEASES, _MAX_LABEL_RECENT_RELEASES, _LABEL_ALLOWLIST,
+    )
 
     config = _load_config(args.config)
     db_path = config["pipeline"]["database"]
-
     conn = get_connection(db_path)
-    rows = conn.execute(
+
+    micro_rows = conn.execute(
         "SELECT label_id, name, track_count, fetched_at FROM label_cache ORDER BY track_count ASC"
+    ).fetchall()
+    churn_rows = conn.execute(
+        "SELECT name, recent_count, fetched_at FROM label_churn_cache ORDER BY recent_count DESC"
     ).fetchall()
     conn.close()
 
-    if not rows:
-        print("No labels cached yet — run the pipeline first.")
-        return
-
+    # --- Micro-label section ---
     blocked, passing, allowlisted = [], [], []
-    for row in rows:
+    for row in micro_rows:
         name = row["name"] or ""
-        count = row["track_count"]
         if any(name.lower().startswith(bl) for bl in _BLOCKED_LABELS):
-            continue  # static blocklist — not interesting to show
+            continue
         if name.lower() in _LABEL_ALLOWLIST:
-            allowlisted.append(row)
-        elif count < _MIN_LABEL_RELEASES:
-            blocked.append(row)
+            allowlisted.append(("micro", row["name"], row["track_count"], row["fetched_at"]))
+        elif row["track_count"] < _MIN_LABEL_RELEASES:
+            blocked.append(("micro", row["name"], row["track_count"], row["fetched_at"]))
         else:
-            passing.append(row)
+            passing.append(("micro", row["name"], row["track_count"], row["fetched_at"]))
 
-    print(f"\n=== Blocked micro-labels (< {_MIN_LABEL_RELEASES} releases) ===")
+    # --- Churn section ---
+    churn_blocked, churn_passing = [], []
+    for row in churn_rows:
+        name = row["name"] or ""
+        if any(name.lower().startswith(bl) for bl in _BLOCKED_LABELS):
+            continue
+        if name.lower() in _LABEL_ALLOWLIST:
+            allowlisted.append(("churn", row["name"], row["recent_count"], row["fetched_at"]))
+        elif row["recent_count"] > _MAX_LABEL_RECENT_RELEASES:
+            churn_blocked.append(row)
+        else:
+            churn_passing.append(row)
+
+    print(f"\n=== Blocked: micro-labels (< {_MIN_LABEL_RELEASES} total releases) ===")
     if blocked:
-        for row in blocked:
-            print(f"  {row['name']:<42} {row['track_count']:4} releases  (checked {row['fetched_at'][:10]})")
+        for _, name, count, fetched in blocked:
+            print(f"  {name:<42} {count:4} releases  (checked {fetched[:10]})")
     else:
         print("  (none)")
 
-    print(f"\n=== Passing labels (>= {_MIN_LABEL_RELEASES} releases) ===")
-    for row in sorted(passing, key=lambda r: r["track_count"]):
-        print(f"  {row['name']:<42} {row['track_count']:4} releases")
+    print(f"\n=== Blocked: churn factories (> {_MAX_LABEL_RECENT_RELEASES} releases in 90 days) ===")
+    if churn_blocked:
+        for row in churn_blocked:
+            print(f"  {row['name']:<42} {row['recent_count']:4} recent  (checked {row['fetched_at'][:10]})")
+    else:
+        print("  (none yet — populate by running the pipeline)")
+
+    print(f"\n=== Passing labels ===")
+    all_passing = {name for _, name, _, _ in passing}
+    for row in sorted(churn_passing, key=lambda r: r["recent_count"], reverse=True):
+        if row["name"] in all_passing:
+            print(f"  {row['name']:<42} {row['recent_count']:3}/90d")
 
     if allowlisted:
-        print(f"\n=== Allowlisted (count check bypassed) ===")
-        for row in allowlisted:
-            print(f"  {row['name']:<42} {row['track_count']:4} releases")
+        print(f"\n=== Allowlisted (all filters bypassed) ===")
+        for _, name, count, _ in allowlisted:
+            print(f"  {name}")
 
     print(f"\nTo rescue a blocked label: add its name (lowercase) to _LABEL_ALLOWLIST")
     print(f"  in modules/recommender_beatport.py")

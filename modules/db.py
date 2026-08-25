@@ -111,6 +111,13 @@ def init_db(db_path: str | Path = _DEFAULT_DB) -> None:
             fetched_at  TEXT
         );
 
+        -- Beatport label recent release counts (last 90 days) — high count = churn factory
+        CREATE TABLE IF NOT EXISTS label_churn_cache (
+            name        TEXT PRIMARY KEY,
+            recent_count INTEGER,
+            fetched_at  TEXT
+        );
+
         -- Pipeline run log
         CREATE TABLE IF NOT EXISTS run_log (
             run_id          TEXT PRIMARY KEY,
