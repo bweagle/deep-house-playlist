@@ -61,6 +61,11 @@ _BLOCKED_LABELS = {
     "stem.ai",
     "online house music",
     "spirit sounds of trance",
+    "lw recordings",
+    "existing compilations",
+    "gmi rights management",
+    "symphonic starter",
+    "kc4k records",
 }
 
 # Labels with fewer than this many total Beatport releases are treated as
