@@ -84,8 +84,15 @@ _MAX_LABEL_RECENT_RELEASES = 3000
 # Explicitly allow these labels regardless of release count or churn score.
 # Use this to rescue labels blocked by either filter.
 # Run `python3 app.py show-labels` to see what is currently being blocked.
+# NOTE: Beatport's label_id filter includes sublabels and compilations, which
+# inflates track counts for major imprints far above their actual release rate.
+# Add any quality label wrongly blocked here (lowercase, exact name match).
 _LABEL_ALLOWLIST: set[str] = {
-    # e.g. "odd one out",
+    "anjunadeep",        # flagship deep/melodic label; ~5k counts sublabels
+    "defected",          # major quality house label; counts compilations
+    "nothing but",       # curated "Nothing But Deep/Techno" series
+    "get physical music",  # respected Berlin label
+    "tronic",            # quality tech house
 }
 
 
@@ -185,6 +192,8 @@ def get_beatport_recommendations(
     def _is_churn_label(label_name: str) -> bool:
         """Return True if the label releases more than _MAX_LABEL_RECENT_RELEASES tracks/90 days."""
         key = label_name.lower()
+        if key in _LABEL_ALLOWLIST:
+            return False  # explicitly allowed — bypass churn check
         if key in _label_churn_cache:
             return _label_churn_cache[key] > _MAX_LABEL_RECENT_RELEASES
         # Check DB cache (7-day TTL)

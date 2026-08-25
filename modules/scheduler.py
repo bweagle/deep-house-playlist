@@ -133,6 +133,23 @@ def run_weekly(config: dict, dry_run: bool = False, dev: bool = False, verbose: 
             max_bpm=config["pipeline"].get("max_bpm", 0),
         )
 
+        # Filter out classics whose artist already hits the cap in the ranked pool.
+        # rank_and_filter caps at 2/artist for regular tracks; if Gianmarco Limenta
+        # already has 2 ranked tracks, adding 2 classics would give 4 total.
+        max_per_artist = 2
+        from collections import Counter
+        ranked_artist_counts: Counter = Counter(
+            t.get("artist", "").strip().lower() for t in ranked
+        )
+        classics_filtered = [
+            c for c in classics
+            if ranked_artist_counts.get(c.get("artist", "").strip().lower(), 0) < max_per_artist
+        ]
+        if len(classics_filtered) < len(classics):
+            removed = len(classics) - len(classics_filtered)
+            print(f"  [scheduler] Dropped {removed} classic(s): artist already at {max_per_artist}-track cap in ranked pool")
+        classics = classics_filtered
+
         # Interleave classics into the ranked pool at evenly-spaced positions,
         # then re-spread artists across the combined list.
         # e.g. 2 classics in a 38-track pool → inserted at positions ~13 and ~26.
