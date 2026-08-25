@@ -54,7 +54,7 @@ jobs:
             final_playlist_size: 20
             recommendations_per_source: 30
             catalog_classics_count: 5
-            exclude_recent_weeks: 4
+            exclude_recent_weeks: 0
             min_bpm: 118
             max_bpm: 135
           EOF
