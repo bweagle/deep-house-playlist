@@ -332,6 +332,25 @@ def _artist_key(track: dict) -> str:
     return track.get("artist", "").lower()
 
 
+def _apply_label_cap(scored: list[dict], max_per_label: int = 3) -> list[dict]:
+    """
+    Remove tracks beyond max_per_label from the same label.
+    Candidates are already sorted by score desc, so we keep the best ones.
+    Tracks with no label are always kept.
+    """
+    counts: dict[str, int] = {}
+    selected = []
+    for track in scored:
+        label = (track.get("label") or "").strip().lower()
+        if not label or counts.get(label, 0) < max_per_label:
+            selected.append(track)
+            if label:
+                counts[label] = counts.get(label, 0) + 1
+    if len(selected) < len(scored):
+        print(f"[ranker] Label cap ({max_per_label}/label): removed {len(scored) - len(selected)} tracks")
+    return selected
+
+
 def _apply_artist_cap(scored: list[dict], final_count: int, max_per_artist: int = 2) -> list[dict]:
     """
     Greedily select up to final_count tracks, capping any single artist
@@ -436,6 +455,7 @@ def rank_and_filter(
                 print(f"[ranker] Excluded {excluded} tracks played in the last {exclude_recent_weeks} weeks")
 
     scored = score_candidates(candidates, taste_profile, db_path)
+    scored = _apply_label_cap(scored)
     top = _apply_artist_cap(scored, final_count, max_per_artist)
     top = _spread_artists(top)
     for i, track in enumerate(top, start=1):

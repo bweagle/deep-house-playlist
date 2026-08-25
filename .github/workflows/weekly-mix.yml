@@ -53,6 +53,7 @@ jobs:
             min_rating_for_taste_profile: 3
             final_playlist_size: 20
             recommendations_per_source: 30
+            catalog_classics_count: 5
             exclude_recent_weeks: 4
             min_bpm: 118
             max_bpm: 135
