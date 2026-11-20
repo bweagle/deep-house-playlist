@@ -1,19 +1,19 @@
 # Weekly Deep House Mix
 
-Automatically generates a weekly deep house playlist on YouTube Music based on your personal music catalog. Every Sunday, the pipeline analyzes your taste profile, pulls fresh tracks from Beatport charts and similar-artist recommendations, scores them against your preferences, and publishes a harmonically-mixed 20-track playlist — plus updates a pinned "My Weekly Mix" playlist you can always play on demand.
+Automatically generates a weekly deep house playlist on YouTube Music based on your personal music catalog. Every Sunday, the pipeline analyzes your taste profile, pulls fresh tracks from Beatport charts and similar-artist recommendations, scores them against your preferences, and publishes a harmonically-mixed 20-track playlist — plus updates a pinned "White Eagle Deephouse" playlist you can always play on demand.
 
 ## How it works
 
 1. **Analyze** — Loads your catalog CSV, matches tracks to Beatport to enrich them with BPM, Camelot key, genre, and label, then computes a taste profile from your highest-rated songs.
 
 2. **Recommend** — Pulls candidates from three sources:
-   - **Beatport** — Top tracks from Deep House, Melodic House & Techno, and Organic House charts (last 3 months)
+   - **Beatport** — Top tracks from Deep House, Progressive House, Melodic House & Techno, and Organic House charts (last 3 months), plus new releases from your top catalog artists
    - **Last.fm** — Top tracks by artists similar to those in your catalog
    - **Claude AI** — Suggests artists to explore based on your taste profile, then finds real tracks on Beatport
 
-3. **Rank** — Scores every candidate against your taste profile (BPM fit, Camelot key compatibility, genre match, recency, familiarity, novelty). Tracks from the last 4 weeks are excluded to keep mixes fresh. Final tracklist is ordered using Camelot wheel harmonic mixing.
+3. **Rank** — Scores every candidate against your taste profile (BPM fit, Camelot key compatibility, genre match, label familiarity, novelty). Applies per-artist and per-label caps to keep the mix varied. Guarantees a few "catalog classics" — your own highly-rated songs — in every mix. Final tracklist is ordered using Camelot wheel harmonic mixing.
 
-4. **Publish** — Searches YouTube for each track, creates a dated archive playlist (e.g. `Weekly Deep House Mix 2026-W16`), and updates a pinned `My Weekly Mix` playlist.
+4. **Publish** — Searches YouTube for each track, creates a dated archive playlist (e.g. `WM 2026-W16`), and updates a pinned playlist with the latest mix.
 
 Runs automatically every Sunday via GitHub Actions.
 
@@ -26,6 +26,7 @@ Runs automatically every Sunday via GitHub Actions.
 - A [Last.fm](https://www.last.fm) account (optional but recommended)
 - An [Anthropic API key](https://console.anthropic.com) (optional but recommended)
 - A Google account with YouTube Data API v3 enabled
+- A SoundCloud account (optional)
 
 ---
 
@@ -81,7 +82,7 @@ Then authenticate:
 python3 setup_beatport_auth.py
 ```
 
-This saves a `beatport_token.json` locally. Tokens refresh automatically.
+This saves a `beatport_token.json` locally. Beatport uses rotating refresh tokens (~48h expiry); the pipeline refreshes them automatically and writes the updated token back to your GitHub secret on each run.
 
 ### 4. Set up YouTube authentication
 
@@ -111,18 +112,26 @@ lastfm:
 anthropic:
   api_key: "YOUR_ANTHROPIC_API_KEY"  # console.anthropic.com
 
+soundcloud:
+  token_file: "soundcloud_token.json"
+  playlist_name_template: "WM {week}"
+  pinned_playlist_name: "My Weekly Mix"
+
 youtube:
   oauth_file: "oauth.json"
-  playlist_name_template: "Weekly Deep House Mix {week}"
+  playlist_name_template: "WM {week}"
   pinned_playlist_name: "My Weekly Mix"
 
 pipeline:
   catalog_csv: "songs.csv"
   database: "deephouse.db"
-  recommendations_per_source: 15
+  recommendations_per_source: 30
   final_playlist_size: 20
   min_rating_for_taste_profile: 3
-  exclude_recent_weeks: 4
+  catalog_classics_count: 2  # guaranteed slots from your own catalog per mix (0 = off)
+  exclude_recent_weeks: 4    # skip tracks played in the last N weeks (0 = off)
+  min_bpm: 118               # hard-exclude tracks below this BPM (0 = off)
+  max_bpm: 135               # hard-exclude tracks above this BPM (0 = off)
 ```
 
 ---
@@ -135,16 +144,22 @@ source venv/bin/activate
 # First time (or when your catalog changes):
 python3 app.py analyze
 
-# Generate and publish a new mix:
-python3 app.py recommend
-python3 app.py publish
+# Full pipeline in one command:
+python3 app.py generate-weekly
+
+# Or step by step:
+python3 app.py recommend             # fetch and score candidates
+python3 app.py rank                  # preview the tracklist
+python3 app.py publish               # create the YouTube playlist
+python3 app.py publish --dry-run     # test YouTube search without creating a playlist
 ```
 
-You can also run each step individually:
+Other useful commands:
 
 ```bash
-python3 app.py rank     # score and preview the tracklist before publishing
-python3 app.py publish --dry-run  # test YouTube search without creating a playlist
+python3 app.py show-labels           # see which Beatport labels are blocked or passing filters
+python3 app.py mixtape               # build a harmonically-ordered playlist from your catalog
+python3 app.py shuffle               # randomize the pinned playlists
 ```
 
 ---
@@ -159,8 +174,30 @@ Add the following secrets to your GitHub repository (`Settings → Secrets → A
 | `YOUTUBE_OAUTH_JSON` | Contents of your `oauth.json` |
 | `ANTHROPIC_API_KEY` | Your Anthropic API key |
 | `LASTFM_API_KEY` | Your Last.fm API key |
+| `GH_PAT` | A GitHub personal access token with `repo` scope (used to write the refreshed Beatport token back to secrets) |
 
-The workflow in `.github/workflows/weekly-mix.yml` runs every Sunday at 08:00 UTC. You can also trigger it manually from the Actions tab with an optional dry-run flag.
+Three workflows run on schedule:
+
+| Workflow | Schedule | Description |
+|----------|----------|-------------|
+| `weekly-mix.yml` | Sundays 08:00 UTC | Full pipeline: recommend → rank → publish |
+| `refresh-beatport-token.yml` | Daily 06:00 UTC | Keeps the Beatport token alive between weekly runs |
+| `shuffle-playlist.yml` | Daily 03:00 UTC | Randomizes the order of your pinned playlist |
+
+You can also trigger `weekly-mix.yml` manually from the Actions tab with an optional dry-run flag.
+
+---
+
+## Label filtering
+
+The pipeline automatically filters out low-quality releases:
+
+- **Blocked aggregators** — DistroKid, TuneCore, ONErpm, CD Baby, and similar self-distribution platforms are always excluded.
+- **Micro-labels** — Labels with fewer than 50 total Beatport releases are skipped.
+- **Churn factories** — Labels releasing more than 3,000 tracks per 90 days are skipped (content farms, not real curation).
+- **Per-label cap** — At most 3 tracks from any single label make it into the final mix.
+
+To rescue a legitimate label that gets caught by the filters, add its name (lowercase) to `_LABEL_ALLOWLIST` in `modules/recommender_beatport.py`. Run `python3 app.py show-labels` to see what's currently being blocked.
 
 ---
 
